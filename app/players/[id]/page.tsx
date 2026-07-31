@@ -5,8 +5,10 @@ import { Card } from "@/components/ui/Card";
 import { RatingBadge } from "@/components/ui/RatingBadge";
 import { PositionBadge } from "@/components/football/PositionBadge";
 import { PlayerRatingGrid } from "@/components/football/PlayerRatingGrid";
+import { PlayerJersey } from "@/components/football/PlayerJersey";
+import { TeamLogo } from "@/components/football/TeamLogo";
 import { toRatingMap } from "@/lib/football-mappers";
-import { formatHeight, initials } from "@/lib/utils";
+import { formatHeight } from "@/lib/utils";
 
 export default async function PlayerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,12 +25,13 @@ export default async function PlayerDetailPage({ params }: { params: Promise<{ i
     <div className="flex flex-col gap-8">
       <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <span
-            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-xl font-black text-black"
-            style={{ background: player.team.primaryColor }}
-          >
-            {initials(player.firstName, player.lastName)}
-          </span>
+          <PlayerJersey
+            primaryColor={player.team.primaryColor}
+            secondaryColor={player.team.secondaryColor}
+            number={player.jerseyNumber}
+            size={72}
+            className="shrink-0"
+          />
           <div>
             <h1 className="text-2xl font-black text-text-primary">
               #{player.jerseyNumber} {player.firstName} {player.lastName}
@@ -40,7 +43,17 @@ export default async function PlayerDetailPage({ params }: { params: Promise<{ i
                 {formatHeight(player.height)} · {player.weight} lbs · {player.classYear}
               </span>
             </div>
-            <Link href={`/teams/${player.team.id}`} className="mt-1 inline-block text-xs text-accent hover:underline">
+            <Link
+              href={`/teams/${player.team.id}`}
+              className="mt-1 inline-flex items-center gap-1.5 text-xs text-accent hover:underline"
+            >
+              <TeamLogo
+                seed={player.team.id}
+                primaryColor={player.team.primaryColor}
+                secondaryColor={player.team.secondaryColor}
+                abbreviation={player.team.abbreviation}
+                size={16}
+              />
               {player.team.name} ({player.team.abbreviation})
             </Link>
           </div>

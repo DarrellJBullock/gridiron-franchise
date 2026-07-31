@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
+import { TeamLogo } from "./TeamLogo";
 
 export interface StandingRow {
   teamId: string;
   teamName: string;
   abbreviation: string;
   primaryColor: string;
+  secondaryColor: string;
   division: string;
   wins: number;
   losses: number;
@@ -53,12 +55,13 @@ export function StandingsTable({ rows }: { rows: StandingRow[] }) {
                 <Tr key={team.teamId}>
                   <Td>
                     <Link href={`/teams/${team.teamId}`} className="flex items-center gap-2 font-medium text-text-primary hover:text-accent">
-                      <span
-                        className="flex h-6 w-6 items-center justify-center rounded text-[10px] font-black text-white"
-                        style={{ background: team.primaryColor }}
-                      >
-                        {team.abbreviation}
-                      </span>
+                      <TeamLogo
+                        seed={team.teamId}
+                        primaryColor={team.primaryColor}
+                        secondaryColor={team.secondaryColor}
+                        abbreviation={team.abbreviation}
+                        size={24}
+                      />
                       {team.teamName}
                     </Link>
                   </Td>

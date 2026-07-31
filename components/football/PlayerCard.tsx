@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { RatingBadge } from "@/components/ui/RatingBadge";
 import { PositionBadge } from "./PositionBadge";
-import { formatHeight, initials } from "@/lib/utils";
+import { PlayerJersey } from "./PlayerJersey";
+import { formatHeight } from "@/lib/utils";
 import type { Position } from "@/types/football";
 
 export interface PlayerCardData {
@@ -15,18 +16,19 @@ export interface PlayerCardData {
   weight: number;
   archetype: string;
   overall: number;
-  team?: { name: string; abbreviation: string; primaryColor: string } | null;
+  team?: { name: string; abbreviation: string; primaryColor: string; secondaryColor: string } | null;
 }
 
 export function PlayerCard({ player, linkToDetail = true }: { player: PlayerCardData; linkToDetail?: boolean }) {
   const content = (
     <Card className="group flex items-center gap-4 p-4 transition-colors hover:border-accent/50">
-      <span
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-black text-black"
-        style={{ background: player.team?.primaryColor ?? "#f5a623" }}
-      >
-        {initials(player.firstName, player.lastName)}
-      </span>
+      <PlayerJersey
+        primaryColor={player.team?.primaryColor ?? "#f5a623"}
+        secondaryColor={player.team?.secondaryColor ?? "#0F172A"}
+        number={player.jerseyNumber}
+        size={48}
+        className="shrink-0"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate font-semibold text-text-primary group-hover:text-accent transition-colors">

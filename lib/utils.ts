@@ -10,10 +10,6 @@ export function formatHeight(inches: number): string {
   return `${feet}'${remainder}"`;
 }
 
-export function initials(firstName: string, lastName: string): string {
-  return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase();
-}
-
 export function ratingTone(value: number): "elite" | "good" | "average" | "weak" {
   if (value >= 90) return "elite";
   if (value >= 75) return "good";

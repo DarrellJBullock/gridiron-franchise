@@ -46,8 +46,22 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
   return (
     <div className="flex flex-col gap-8">
       <Scoreboard
-        home={{ name: game.homeTeam.name, abbreviation: game.homeTeam.abbreviation, primaryColor: game.homeTeam.primaryColor, score: game.homeScore }}
-        away={{ name: game.awayTeam.name, abbreviation: game.awayTeam.abbreviation, primaryColor: game.awayTeam.primaryColor, score: game.awayScore }}
+        home={{
+          id: game.homeTeam.id,
+          name: game.homeTeam.name,
+          abbreviation: game.homeTeam.abbreviation,
+          primaryColor: game.homeTeam.primaryColor,
+          secondaryColor: game.homeTeam.secondaryColor,
+          score: game.homeScore,
+        }}
+        away={{
+          id: game.awayTeam.id,
+          name: game.awayTeam.name,
+          abbreviation: game.awayTeam.abbreviation,
+          primaryColor: game.awayTeam.primaryColor,
+          secondaryColor: game.awayTeam.secondaryColor,
+          score: game.awayScore,
+        }}
         status={game.status}
         week={game.week}
       />

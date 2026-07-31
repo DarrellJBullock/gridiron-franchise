@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { RatingBadge } from "@/components/ui/RatingBadge";
+import { TeamLogo } from "./TeamLogo";
 
 export interface TeamCardData {
   id: string;
@@ -37,12 +38,13 @@ export function TeamCard({ team }: { team: TeamCardData }) {
         />
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <span
-              className="flex h-11 w-11 items-center justify-center rounded-lg text-sm font-black text-white shadow-inner"
-              style={{ background: team.primaryColor }}
-            >
-              {team.abbreviation}
-            </span>
+            <TeamLogo
+              seed={team.id}
+              primaryColor={team.primaryColor}
+              secondaryColor={team.secondaryColor}
+              abbreviation={team.abbreviation}
+              size={44}
+            />
             <div>
               <p className="font-semibold text-text-primary group-hover:text-accent transition-colors">
                 {team.name}

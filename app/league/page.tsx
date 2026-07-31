@@ -99,6 +99,7 @@ export default async function LeaguePage() {
               teamName: s.team.name,
               abbreviation: s.team.abbreviation,
               primaryColor: s.team.primaryColor,
+              secondaryColor: s.team.secondaryColor,
               division: s.division,
               wins: s.wins,
               losses: s.losses,

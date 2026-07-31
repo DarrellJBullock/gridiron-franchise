@@ -118,10 +118,8 @@ export default async function HomePage() {
               <GameSummaryCard
                 key={game.id}
                 gameId={game.id}
-                homeName={game.homeTeam.name}
-                homeAbbr={game.homeTeam.abbreviation}
-                awayName={game.awayTeam.name}
-                awayAbbr={game.awayTeam.abbreviation}
+                home={game.homeTeam}
+                away={game.awayTeam}
                 homeScore={game.homeScore}
                 awayScore={game.awayScore}
                 week={game.week}

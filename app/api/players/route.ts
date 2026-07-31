@@ -24,7 +24,7 @@ export async function GET(req: Request) {
       ...(minOverall ? { overall: { gte: Number(minOverall) } } : {}),
     },
     include: {
-      team: { select: { id: true, name: true, abbreviation: true, primaryColor: true } },
+      team: { select: { id: true, name: true, abbreviation: true, primaryColor: true, secondaryColor: true } },
     },
     orderBy: { overall: "desc" },
     take: 500,

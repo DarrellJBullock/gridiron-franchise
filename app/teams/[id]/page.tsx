@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
 import { PositionBadge } from "@/components/football/PositionBadge";
+import { TeamLogo } from "@/components/football/TeamLogo";
 import { calculateTeamStrengths } from "@/lib/simulation/team-ratings";
 import { toRatedPlayer } from "@/lib/football-mappers";
 
@@ -35,12 +36,13 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <span
-              className="flex h-16 w-16 items-center justify-center rounded-xl text-xl font-black text-white"
-              style={{ background: team.primaryColor }}
-            >
-              {team.abbreviation}
-            </span>
+            <TeamLogo
+              seed={team.id}
+              primaryColor={team.primaryColor}
+              secondaryColor={team.secondaryColor}
+              abbreviation={team.abbreviation}
+              size={64}
+            />
             <div>
               <h1 className="text-2xl font-black text-text-primary md:text-3xl">{team.name}</h1>
               <p className="text-sm text-text-muted">

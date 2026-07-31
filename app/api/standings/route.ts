@@ -25,6 +25,7 @@ export async function GET(req: Request) {
       teamName: s.team.name,
       abbreviation: s.team.abbreviation,
       primaryColor: s.team.primaryColor,
+      secondaryColor: s.team.secondaryColor,
       division: s.division,
       wins: s.wins,
       losses: s.losses,

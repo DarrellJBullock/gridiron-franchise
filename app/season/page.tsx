@@ -17,14 +17,22 @@ interface Season {
   totalWeeks: number;
 }
 
+interface GameTeam {
+  id: string;
+  name: string;
+  abbreviation: string;
+  primaryColor: string;
+  secondaryColor: string;
+}
+
 interface GameRow {
   id: string;
   week: number;
   status: string;
   homeScore: number;
   awayScore: number;
-  homeTeam: { id: string; name: string; abbreviation: string };
-  awayTeam: { id: string; name: string; abbreviation: string };
+  homeTeam: GameTeam;
+  awayTeam: GameTeam;
   summary: string | null;
 }
 
@@ -184,10 +192,8 @@ export default function SeasonPage() {
                     <GameSummaryCard
                       key={g.id}
                       gameId={g.id}
-                      homeName={g.homeTeam.name}
-                      homeAbbr={g.homeTeam.abbreviation}
-                      awayName={g.awayTeam.name}
-                      awayAbbr={g.awayTeam.abbreviation}
+                      home={g.homeTeam}
+                      away={g.awayTeam}
                       homeScore={g.homeScore}
                       awayScore={g.awayScore}
                       week={g.week}

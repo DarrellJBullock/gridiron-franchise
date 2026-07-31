@@ -1,9 +1,12 @@
 import { Badge } from "@/components/ui/Badge";
+import { TeamLogo } from "./TeamLogo";
 
 export interface ScoreboardTeam {
+  id: string;
   name: string;
   abbreviation: string;
   primaryColor: string;
+  secondaryColor: string;
   score: number;
 }
 
@@ -33,12 +36,14 @@ export function Scoreboard({ home, away, status = "FINAL", week }: ScoreboardPro
 function TeamScore({ team, align }: { team: ScoreboardTeam; align: "left" | "right" }) {
   return (
     <div className={`flex items-center gap-3 ${align === "right" ? "flex-row-reverse text-right" : ""}`}>
-      <span
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-sm font-black text-white"
-        style={{ background: team.primaryColor }}
-      >
-        {team.abbreviation}
-      </span>
+      <TeamLogo
+        seed={team.id}
+        primaryColor={team.primaryColor}
+        secondaryColor={team.secondaryColor}
+        abbreviation={team.abbreviation}
+        size={48}
+        className="shrink-0"
+      />
       <div>
         <p className="text-sm font-semibold text-text-primary">{team.name}</p>
         <p className="text-4xl font-black tabular-nums text-text-primary">{team.score}</p>

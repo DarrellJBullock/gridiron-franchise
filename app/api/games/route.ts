@@ -8,8 +8,8 @@ export async function GET(req: Request) {
   const games = await prisma.game.findMany({
     where: seasonId ? { seasonId } : undefined,
     include: {
-      homeTeam: { select: { id: true, name: true, abbreviation: true } },
-      awayTeam: { select: { id: true, name: true, abbreviation: true } },
+      homeTeam: { select: { id: true, name: true, abbreviation: true, primaryColor: true, secondaryColor: true } },
+      awayTeam: { select: { id: true, name: true, abbreviation: true, primaryColor: true, secondaryColor: true } },
     },
     orderBy: [{ week: "asc" }, { createdAt: "asc" }],
   });
