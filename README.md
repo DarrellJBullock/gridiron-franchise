@@ -39,7 +39,7 @@ cohesive sports-broadcast-style dashboard UI — all original IP so it's safe to
 - Row-level and team-level validation (missing QB/kicker, thin O-line, thin secondary, duplicate jerseys, out-of-range ratings)
 - Every player rated 0-100 across ~20-25 core + position-specific skills
 - Player cards with a radar chart and grouped rating bars
-- Editable depth charts per position with starter/backup1/backup2 slots
+- Drag-and-drop depth charts per position (with up/down buttons as a keyboard/mobile-friendly fallback)
 - Matchup preview with team comparison bars and a simulated win probability
 - A drive-based statistical game simulation engine (not physics) with quarter-by-quarter scoring, team stats, player stat lines, a full play-by-play log, a summary, turning point, and top performers
 - Full season creation with a round-robin schedule, week-by-week or full-season simulation, and live standings
@@ -230,7 +230,6 @@ and branding are invented for demonstration purposes only.
 
 ## Future Roadmap
 
-- Drag-and-drop depth chart reordering
 - Multi-season franchise mode with player progression and retirement
 - Trade and free agency simulation
 - Authentication so each user manages their own franchise

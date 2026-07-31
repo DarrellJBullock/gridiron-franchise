@@ -11,7 +11,6 @@ const STACK = [
 ];
 
 const ROADMAP = [
-  "Drag-and-drop depth chart reordering",
   "Multi-season franchise mode with player progression and retirement",
   "Trade and free agency simulation",
   "Authentication so each user manages their own franchise",
