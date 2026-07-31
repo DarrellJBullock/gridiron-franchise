@@ -55,6 +55,26 @@ export async function persistSimulatedGame({ homeTeamId, awayTeamId, seasonId, w
     });
   }
 
+  if (result.plays.length > 0) {
+    await prisma.gamePlay.createMany({
+      data: result.plays.map((play) => ({
+        gameId: game.id,
+        sequence: play.sequence,
+        quarter: play.quarter,
+        driveNumber: play.driveNumber,
+        offenseAbbr: play.offenseAbbr,
+        down: play.down,
+        distance: play.distance,
+        yardLine: play.yardLine,
+        playType: play.playType,
+        description: play.description,
+        yards: play.yards,
+        isScoring: play.isScoring,
+        isTurnover: play.isTurnover,
+      })),
+    });
+  }
+
   if (seasonId) {
     await updateStandingsForGame(seasonId, homeTeamId, awayTeamId, result.homeScore, result.awayScore);
   }

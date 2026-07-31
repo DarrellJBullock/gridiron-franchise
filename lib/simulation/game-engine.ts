@@ -1,18 +1,23 @@
 import type {
   GamePlayerStatLine,
   GameTeamStatLine,
+  PlayByPlayEntry,
   QuarterScores,
   SimulatedGameResult,
 } from "@/types/football";
 import { calculateTeamRatings, type RatedPlayer } from "./team-ratings";
 import { bestPlayerAt, topPlayersAt, PlayerStatAccumulator, selectTopPerformers } from "./player-stats";
+import { generateDrivePlays } from "./play-by-play";
 
 // This is a franchise-style statistical simulation, not a physics engine.
-// Every drive resolves probabilistically from team ratings; no real plays are modeled.
+// Every drive resolves probabilistically from team ratings; the play-by-play log is
+// flavor text generated from that result, not a separate down-by-down simulation.
 
 export interface SimulateGameInput {
   homeTeamName: string;
   awayTeamName: string;
+  homeTeamAbbr?: string;
+  awayTeamAbbr?: string;
   homePlayers: RatedPlayer[];
   awayPlayers: RatedPlayer[];
   homeFieldAdvantage?: boolean;
@@ -20,6 +25,7 @@ export interface SimulateGameInput {
 
 interface TeamContext {
   name: string;
+  abbr: string;
   players: RatedPlayer[];
   offenseRating: number;
   defenseRating: number;
@@ -44,10 +50,11 @@ function pickWeighted<T>(items: T[]): T | undefined {
   return items[randomInt(0, items.length - 1)];
 }
 
-function buildContext(name: string, players: RatedPlayer[]): TeamContext {
+function buildContext(name: string, abbr: string, players: RatedPlayer[]): TeamContext {
   const ratings = calculateTeamRatings(players);
   return {
     name,
+    abbr,
     players,
     offenseRating: ratings.offenseRating,
     defenseRating: ratings.defenseRating,
@@ -66,12 +73,14 @@ interface DriveResult {
   turnover: boolean;
   bigPlay: boolean;
   quarter: number;
+  plays: Omit<PlayByPlayEntry, "sequence">[];
 }
 
 function simulateDrive(
   offense: TeamContext,
   defense: TeamContext,
   quarter: number,
+  driveNumber: number,
   homeBonus: number,
   stats: PlayerStatAccumulator,
   teamLine: GameTeamStatLine,
@@ -90,6 +99,9 @@ function simulateDrive(
   thirdDowns.attempts += attempts;
   thirdDowns.conversions += conversions;
 
+  const rb = pickWeighted(offense.rbs);
+  const receiver = pickWeighted(offense.receivers);
+
   const turnoverChance = clamp(0.14 - diff * 0.0022, 0.04, 0.26);
   if (Math.random() < turnoverChance) {
     const yards = randomInt(5, 30);
@@ -102,7 +114,23 @@ function simulateDrive(
     if (defender && !isInterception) {
       stats.addForcedFumble(defender);
     }
-    return { points: 0, yards, turnover: true, bigPlay: false, quarter };
+    const plays = generateDrivePlays({
+      quarter,
+      driveNumber,
+      offenseAbbr: offense.abbr,
+      qb: offense.qb,
+      rb,
+      receiver,
+      kicker: offense.kicker,
+      defenders: defense.defenders,
+      outcome: "turnover",
+      rushYards: 0,
+      passYards: 0,
+      turnoverYards: yards,
+      turnoverType: isInterception ? "interception" : "fumble",
+      scoredOnGround: false,
+    });
+    return { points: 0, yards, turnover: true, bigPlay: false, quarter, plays };
   }
 
   const bigPlayChance = clamp(0.16 + diff * 0.0035, 0.05, 0.4);
@@ -124,22 +152,24 @@ function simulateDrive(
   teamLine.rushingYards += rushYards;
   teamLine.passingYards += passYards;
 
-  const rb = pickWeighted(offense.rbs);
-  const receiver = pickWeighted(offense.receivers);
-
   let points = 0;
   let scoredOnGround = false;
+  let outcome: "touchdown" | "field_goal" | "missed_field_goal" | "punt" = "punt";
   if (reachesRedZone) {
     const tdChance = clamp(0.5 + diff * 0.0055, 0.22, 0.85);
     if (Math.random() < tdChance) {
       points = 7;
       scoredOnGround = runRatio > 0.5 || !receiver;
+      outcome = "touchdown";
     } else {
       const kickerRating = offense.kicker?.overall ?? 55;
       const fgChance = clamp(kickerRating / 115, 0.45, 0.95);
       if (Math.random() < fgChance && offense.kicker) {
         points = 3;
         stats.addFieldGoal(offense.kicker);
+        outcome = "field_goal";
+      } else {
+        outcome = "missed_field_goal";
       }
     }
   }
@@ -163,7 +193,24 @@ function simulateDrive(
     if (tackler) stats.addTackle(tackler);
   }
 
-  return { points, yards: driveYards, turnover: false, bigPlay, quarter };
+  const plays = generateDrivePlays({
+    quarter,
+    driveNumber,
+    offenseAbbr: offense.abbr,
+    qb: offense.qb,
+    rb,
+    receiver,
+    kicker: offense.kicker,
+    defenders: defense.defenders,
+    outcome,
+    rushYards,
+    passYards,
+    turnoverYards: 0,
+    turnoverType: "fumble",
+    scoredOnGround,
+  });
+
+  return { points, yards: driveYards, turnover: false, bigPlay, quarter, plays };
 }
 
 function formatClock(totalSeconds: number): string {
@@ -173,8 +220,8 @@ function formatClock(totalSeconds: number): string {
 }
 
 export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
-  const home = buildContext(input.homeTeamName, input.homePlayers);
-  const away = buildContext(input.awayTeamName, input.awayPlayers);
+  const home = buildContext(input.homeTeamName, input.homeTeamAbbr ?? input.homeTeamName, input.homePlayers);
+  const away = buildContext(input.awayTeamName, input.awayTeamAbbr ?? input.awayTeamName, input.awayPlayers);
   const homeBonus = input.homeFieldAdvantage === false ? 0 : 2.5;
 
   const stats = new PlayerStatAccumulator();
@@ -213,10 +260,13 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
   const drivesPerQuarterPerTeam = 3;
   const bigPlays: { team: string; quarter: number; yards: number }[] = [];
   let biggestSwing = { quarter: 1, delta: 0, team: "" };
+  const allPlays: Omit<PlayByPlayEntry, "sequence">[] = [];
+  let driveNumber = 0;
 
   for (let quarter = 1; quarter <= 4; quarter++) {
     for (let drive = 0; drive < drivesPerQuarterPerTeam; drive++) {
       const homeStarts = (quarter + drive) % 2 === 0;
+      driveNumber += 1;
 
       const offense = homeStarts ? home : away;
       const defense = homeStarts ? away : home;
@@ -224,7 +274,17 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
       const offenseThirdDowns = homeStarts ? homeThirdDowns : awayThirdDowns;
       const bonus = homeStarts ? homeBonus : 0;
 
-      const result = simulateDrive(offense, defense, quarter, bonus, stats, offenseLine, offenseThirdDowns);
+      const result = simulateDrive(
+        offense,
+        defense,
+        quarter,
+        driveNumber,
+        bonus,
+        stats,
+        offenseLine,
+        offenseThirdDowns
+      );
+      allPlays.push(...result.plays);
       const driveSeconds = randomInt(90, 210);
       if (homeStarts) homePossessionSeconds += driveSeconds;
       else awayPossessionSeconds += driveSeconds;
@@ -282,6 +342,8 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
   const awayRunHeavy = awayLine.rushingYards >= awayLine.passingYards;
   const playStyleSummary = `${home.name} leaned ${homeRunHeavy ? "on the ground game" : "on the passing attack"} (${homeLine.rushingYards} rush / ${homeLine.passingYards} pass yds) while ${away.name} ${awayRunHeavy ? "pounded the rock" : "attacked through the air"} (${awayLine.rushingYards} rush / ${awayLine.passingYards} pass yds).`;
 
+  const plays: PlayByPlayEntry[] = allPlays.map((play, index) => ({ ...play, sequence: index + 1 }));
+
   return {
     homeScore,
     awayScore,
@@ -289,6 +351,7 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
     homeStats: homeLine,
     awayStats: awayLine,
     playerStats,
+    plays,
     summary,
     topPerformers,
     turningPoint,

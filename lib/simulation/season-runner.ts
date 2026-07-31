@@ -18,6 +18,8 @@ export async function simulateSeasonWeek(seasonId: string) {
     const result = simulateGame({
       homeTeamName: game.homeTeam.name,
       awayTeamName: game.awayTeam.name,
+      homeTeamAbbr: game.homeTeam.abbreviation,
+      awayTeamAbbr: game.awayTeam.abbreviation,
       homePlayers: game.homeTeam.players.map(toRatedPlayer),
       awayPlayers: game.awayTeam.players.map(toRatedPlayer),
     });

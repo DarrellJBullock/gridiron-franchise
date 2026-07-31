@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { Scoreboard } from "@/components/football/Scoreboard";
 import { GameRecap } from "@/components/football/GameRecap";
+import { PlayByPlayLog } from "@/components/football/PlayByPlayLog";
 import { TopPerformers } from "@/components/simulation/TopPerformers";
 import { selectTopPerformers } from "@/lib/simulation/player-stats";
 import type { GamePlayerStatLine } from "@/types/football";
@@ -16,6 +17,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
       awayTeam: true,
       teamStats: true,
       playerStats: { include: { player: true } },
+      plays: { orderBy: { sequence: "asc" } },
     },
   });
   if (!game) notFound();
@@ -65,6 +67,8 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
           playStyleSummary={game.playStyleSummary ?? ""}
         />
       )}
+
+      <PlayByPlayLog plays={game.plays} />
     </div>
   );
 }

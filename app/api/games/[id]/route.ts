@@ -13,6 +13,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       playerStats: {
         include: { player: true },
       },
+      plays: {
+        orderBy: { sequence: "asc" },
+      },
       season: true,
     },
   });

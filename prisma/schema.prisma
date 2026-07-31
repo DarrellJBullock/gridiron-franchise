@@ -207,10 +207,32 @@ model Game {
   awayTeam Team            @relation("AwayTeam", fields: [awayTeamId], references: [id])
   teamStats   GameTeamStats[]
   playerStats GamePlayerStats[]
+  plays       GamePlay[]
 
   @@index([seasonId])
   @@index([homeTeamId])
   @@index([awayTeamId])
+}
+
+model GamePlay {
+  id            String  @id @default(cuid())
+  gameId        String
+  sequence      Int
+  quarter       Int
+  driveNumber   Int
+  offenseAbbr   String
+  down          Int
+  distance      Int
+  yardLine      Int
+  playType      String
+  description   String
+  yards         Int
+  isScoring     Boolean @default(false)
+  isTurnover    Boolean @default(false)
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, sequence])
 }
 
 model GameTeamStats {

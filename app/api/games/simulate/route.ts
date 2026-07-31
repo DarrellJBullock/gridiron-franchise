@@ -29,6 +29,8 @@ export async function POST(req: Request) {
   const result = simulateGame({
     homeTeamName: homeTeam.name,
     awayTeamName: awayTeam.name,
+    homeTeamAbbr: homeTeam.abbreviation,
+    awayTeamAbbr: awayTeam.abbreviation,
     homePlayers: homeTeam.players.map(toRatedPlayer),
     awayPlayers: awayTeam.players.map(toRatedPlayer),
   });

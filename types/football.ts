@@ -240,6 +240,33 @@ export interface GamePlayerStatLine {
   fieldGoalsMade?: number;
 }
 
+export type PlayType =
+  | "run"
+  | "pass"
+  | "incomplete"
+  | "punt"
+  | "field_goal"
+  | "missed_field_goal"
+  | "touchdown"
+  | "extra_point"
+  | "interception"
+  | "fumble";
+
+export interface PlayByPlayEntry {
+  sequence: number;
+  quarter: number;
+  driveNumber: number;
+  offenseAbbr: string;
+  down: number;
+  distance: number;
+  yardLine: number;
+  playType: PlayType;
+  description: string;
+  yards: number;
+  isScoring: boolean;
+  isTurnover: boolean;
+}
+
 export interface SimulatedGameResult {
   homeScore: number;
   awayScore: number;
@@ -247,6 +274,7 @@ export interface SimulatedGameResult {
   homeStats: GameTeamStatLine;
   awayStats: GameTeamStatLine;
   playerStats: GamePlayerStatLine[];
+  plays: PlayByPlayEntry[];
   summary: string;
   topPerformers: GamePlayerStatLine[];
   turningPoint: string;
