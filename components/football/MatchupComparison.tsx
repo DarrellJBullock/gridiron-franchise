@@ -28,13 +28,13 @@ export function MatchupComparison({ home, away }: { home: TeamCardData; away: Te
         {rows.map((row) => (
           <div key={row.label}>
             <div className="mb-1 flex items-center justify-between text-xs font-semibold">
-              <span className="text-accent">{row.home}</span>
-              <span className="text-text-muted">{row.label}</span>
               <span className="text-accent-blue">{row.away}</span>
+              <span className="text-text-muted">{row.label}</span>
+              <span className="text-accent">{row.home}</span>
             </div>
             <div className="flex h-2 overflow-hidden rounded-full bg-surface-hover">
-              <div className="h-full bg-accent" style={{ width: `${(row.home / (row.home + row.away || 1)) * 100}%` }} />
               <div className="h-full bg-accent-blue" style={{ width: `${(row.away / (row.home + row.away || 1)) * 100}%` }} />
+              <div className="h-full bg-accent" style={{ width: `${(row.home / (row.home + row.away || 1)) * 100}%` }} />
             </div>
           </div>
         ))}
