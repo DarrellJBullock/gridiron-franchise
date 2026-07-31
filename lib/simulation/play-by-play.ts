@@ -211,10 +211,10 @@ export function generateDrivePlays(ctx: DrivePlayContext): Omit<PlayByPlayEntry,
         push(
           final,
           "interception",
-          `${downLabel(final.down)} & ${final.distance}: ${shortName(ctx.qb, "The QB")} pass INTERCEPTED by ${shortName(
-            defender,
-            "the defense"
-          )}!`,
+          `${downLabel(final.down)} & ${final.distance} at the ${fieldPosition(final.yardLine)}: ${shortName(
+            ctx.qb,
+            "The QB"
+          )} pass INTERCEPTED by ${shortName(defender, "the defense")}!`,
           0,
           false,
           true
@@ -224,7 +224,7 @@ export function generateDrivePlays(ctx: DrivePlayContext): Omit<PlayByPlayEntry,
         push(
           final,
           "fumble",
-          `${downLabel(final.down)} & ${final.distance}: ${shortName(
+          `${downLabel(final.down)} & ${final.distance} at the ${fieldPosition(final.yardLine)}: ${shortName(
             carrier,
             "The ball carrier"
           )} FUMBLES, recovered by ${shortName(defender, "the defense")}!`,
