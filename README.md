@@ -43,6 +43,7 @@ cohesive sports-broadcast-style dashboard UI — all original IP so it's safe to
 - Matchup preview with team comparison bars and a simulated win probability
 - A drive-based statistical game simulation engine (not physics) with quarter-by-quarter scoring, team stats, player stat lines, a full play-by-play log, a summary, turning point, and top performers
 - Full season creation with a round-robin schedule, week-by-week or full-season simulation, and live standings
+- Multi-season franchise mode: advance to the next year and every player ages, ratings drift up or down based on age, some retire, and rookies are drafted in to backfill — with a franchise history view showing each season's champion
 - League-wide stat leaderboards (passing, rushing, receiving, defense, kicking)
 - Procedurally generated team logos and player jerseys — deterministic SVGs built from each team's own colors, no external images or generation services
 - Dark, responsive, mobile-first "football operations command center" UI
@@ -121,6 +122,25 @@ from the rating differential between the offense and the opposing defense, facto
 The result includes a final score, quarter-by-quarter scoring, team stat lines, individual player stat
 lines (attributed to the top players at each position), a text summary, a turning point, a play-style
 summary, and the top performers of the game.
+
+## Multi-Season Franchise Mode
+
+`lib/simulation/franchise-progression.ts` runs the off-season once a season's status is `COMPLETED` and
+you click **Advance to Next Season** on the Season page. For every active player on every team:
+
+- Age and years of experience increase by one
+- Every rating drifts based on an age curve — players 23 and under trend up, ages 24-27 hold roughly
+  steady, and ratings decline gradually from 28 on, steeply past 34
+- A retirement roll factors in age (rising sharply after 30, guaranteed at 41) and a low-overall penalty
+  for players declining below replacement level
+- Retired players are marked `retired` (never deleted, so their career stats and game history stay intact)
+  and are immediately backfilled with a rookie at the same position, generated with the same procedural
+  logic used to seed the league (`lib/simulation/player-generator.ts`)
+- Each team's depth chart is rebuilt from the refreshed active roster, and team ratings are recalculated
+
+A new season is then created with a fresh round-robin schedule and reset standings. The Season page shows
+a summary of notable retirements and rookies after each advance, plus a **Franchise History** list of
+every past season's champion (best regular-season record).
 
 ## Data Model
 
@@ -230,6 +250,5 @@ and branding are invented for demonstration purposes only.
 
 ## Future Roadmap
 
-- Multi-season franchise mode with player progression and retirement
 - Trade and free agency simulation
 - Authentication so each user manages their own franchise

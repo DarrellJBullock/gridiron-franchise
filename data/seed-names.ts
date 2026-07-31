@@ -29,8 +29,6 @@ export const HOMETOWNS = [
   "Dallas, TX", "Philadelphia, PA", "Pittsburgh, PA", "Allentown, PA",
 ] as const;
 
-export const CLASS_YEARS = ["Rookie", "2nd Year", "3rd Year", "Veteran", "Pro Bowl Vet"] as const;
-
 export const ARCHETYPES: Record<string, string[]> = {
   QB: ["Field General", "Gunslinger", "Dual Threat", "Game Manager"],
   RB: ["Power Back", "Elusive Back", "Workhorse", "Receiving Back"],

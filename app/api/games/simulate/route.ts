@@ -18,8 +18,8 @@ export async function POST(req: Request) {
   }
 
   const [homeTeam, awayTeam] = await Promise.all([
-    prisma.team.findUnique({ where: { id: body.homeTeamId }, include: { players: true } }),
-    prisma.team.findUnique({ where: { id: body.awayTeamId }, include: { players: true } }),
+    prisma.team.findUnique({ where: { id: body.homeTeamId }, include: { players: { where: { retired: false } } } }),
+    prisma.team.findUnique({ where: { id: body.awayTeamId }, include: { players: { where: { retired: false } } } }),
   ]);
 
   if (!homeTeam || !awayTeam) {

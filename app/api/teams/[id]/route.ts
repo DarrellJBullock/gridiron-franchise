@@ -9,7 +9,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const team = await prisma.team.findUnique({
     where: { id },
     include: {
-      players: { orderBy: { overall: "desc" } },
+      players: { where: { retired: false }, orderBy: { overall: "desc" } },
       depthCharts: {
         include: { starter: true, backup1: true, backup2: true },
       },

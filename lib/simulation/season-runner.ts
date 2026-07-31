@@ -11,7 +11,10 @@ export async function simulateSeasonWeek(seasonId: string) {
   const nextWeek = season.currentWeek + 1;
   const scheduledGames = await prisma.game.findMany({
     where: { seasonId, week: nextWeek, status: "SCHEDULED" },
-    include: { homeTeam: { include: { players: true } }, awayTeam: { include: { players: true } } },
+    include: {
+      homeTeam: { include: { players: { where: { retired: false } } } },
+      awayTeam: { include: { players: { where: { retired: false } } } },
+    },
   });
 
   for (const game of scheduledGames) {

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   const teams = await prisma.team.findMany({
     include: {
-      _count: { select: { players: true } },
+      _count: { select: { players: { where: { retired: false } } } },
     },
     orderBy: { overallRating: "desc" },
   });

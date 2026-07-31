@@ -10,12 +10,12 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const [teamCount, playerCount, gameCount, topTeams, recentGames] = await Promise.all([
     prisma.team.count(),
-    prisma.player.count(),
+    prisma.player.count({ where: { retired: false } }),
     prisma.game.count({ where: { status: "FINAL" } }),
     prisma.team.findMany({
       orderBy: { overallRating: "desc" },
       take: 4,
-      include: { _count: { select: { players: true } } },
+      include: { _count: { select: { players: { where: { retired: false } } } } },
     }),
     prisma.game.findMany({
       where: { status: "FINAL" },

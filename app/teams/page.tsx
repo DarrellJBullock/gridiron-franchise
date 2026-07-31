@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function TeamsPage() {
   const teams = await prisma.team.findMany({
     orderBy: { overallRating: "desc" },
-    include: { _count: { select: { players: true } } },
+    include: { _count: { select: { players: { where: { retired: false } } } } },
   });
 
   const latestSeason = await prisma.season.findFirst({ orderBy: { createdAt: "desc" } });

@@ -15,7 +15,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
 
   const team = await prisma.team.findUnique({
     where: { id },
-    include: { players: { orderBy: { overall: "desc" } } },
+    include: { players: { where: { retired: false }, orderBy: { overall: "desc" } } },
   });
   if (!team) notFound();
 

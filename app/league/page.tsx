@@ -13,7 +13,7 @@ export default async function LeaguePage() {
   const teams = await prisma.team.findMany({
     where: league ? { leagueId: league.id } : undefined,
     orderBy: { overallRating: "desc" },
-    include: { _count: { select: { players: true } } },
+    include: { _count: { select: { players: { where: { retired: false } } } } },
   });
   const season = await prisma.season.findFirst({ orderBy: { createdAt: "desc" } });
   const standings = season

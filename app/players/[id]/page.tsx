@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { RatingBadge } from "@/components/ui/RatingBadge";
 import { PositionBadge } from "@/components/football/PositionBadge";
 import { PlayerRatingGrid } from "@/components/football/PlayerRatingGrid";
@@ -33,14 +34,19 @@ export default async function PlayerDetailPage({ params }: { params: Promise<{ i
             className="shrink-0"
           />
           <div>
-            <h1 className="text-2xl font-black text-text-primary">
+            <h1 className="flex flex-wrap items-center gap-2 text-2xl font-black text-text-primary">
               #{player.jerseyNumber} {player.firstName} {player.lastName}
+              {player.retired && (
+                <Badge tone="neutral" className="align-middle text-[10px]">
+                  Retired {player.retiredYear ?? ""}
+                </Badge>
+              )}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <PositionBadge position={player.position} />
               <span className="text-xs text-text-muted">{player.archetype}</span>
               <span className="text-xs text-text-faint">
-                {formatHeight(player.height)} · {player.weight} lbs · {player.classYear}
+                {formatHeight(player.height)} · {player.weight} lbs · Age {player.age} · {player.classYear}
               </span>
             </div>
             <Link

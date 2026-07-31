@@ -111,6 +111,10 @@ model Player {
   hometown      String
   archetype     String
   overall       Int      @default(0)
+  age           Int      @default(22)
+  yearsPro      Int      @default(0)
+  retired       Boolean  @default(false)
+  retiredYear   Int?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -123,6 +127,7 @@ model Player {
 
   @@index([teamId])
   @@index([position])
+  @@index([teamId, retired])
 }
 
 model PlayerRating {

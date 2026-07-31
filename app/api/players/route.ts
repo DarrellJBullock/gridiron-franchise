@@ -11,6 +11,7 @@ export async function GET(req: Request) {
 
   const players = await prisma.player.findMany({
     where: {
+      retired: false,
       ...(search
         ? {
             OR: [

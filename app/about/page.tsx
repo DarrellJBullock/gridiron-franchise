@@ -11,7 +11,6 @@ const STACK = [
 ];
 
 const ROADMAP = [
-  "Multi-season franchise mode with player progression and retirement",
   "Trade and free agency simulation",
   "Authentication so each user manages their own franchise",
 ];
@@ -69,6 +68,21 @@ export default function AboutPage() {
           the opposing defense, with home-field advantage, turnover chance, big-play chance, red-zone
           efficiency, and controlled randomness all factored in. Player-level stats are then attributed to
           the top players at each relevant position.
+        </p>
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="mb-2 text-lg font-bold text-text-primary">Multi-Season Franchise Mode</h2>
+        <p className="text-sm text-text-muted">
+          Once a season is complete, <strong>Advance to Next Season</strong> on the Season page runs an
+          off-season pass (
+          <code className="rounded bg-surface-hover px-1">lib/simulation/franchise-progression.ts</code>):
+          every active player ages a year, ratings drift up or down on an age curve, and some players
+          retire based on age and declining performance. Retired players keep their career stats and are
+          never deleted — they&apos;re just marked retired and backfilled with a freshly generated rookie
+          at the same position. Depth charts and team ratings are rebuilt automatically, and a new season
+          gets a fresh schedule and reset standings. A Franchise History list tracks every season&apos;s
+          champion over time.
         </p>
       </Card>
 

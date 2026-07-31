@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { GameSummaryCard } from "@/components/simulation/GameSummaryCard";
+import { TeamLogo } from "@/components/football/TeamLogo";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 interface Season {
   id: string;
   name: string;
+  year: number;
   status: string;
   currentWeek: number;
   totalWeeks: number;
@@ -36,12 +38,44 @@ interface GameRow {
   summary: string | null;
 }
 
+interface FranchiseNote {
+  name: string;
+  position: string;
+  team: string;
+  overall: number;
+}
+
+interface AdvanceSummary {
+  newSeasonName: string;
+  retiredCount: number;
+  rookieCount: number;
+  notableRetirements: FranchiseNote[];
+  notableRookies: FranchiseNote[];
+}
+
+interface SeasonHistoryEntry {
+  id: string;
+  name: string;
+  year: number;
+  status: string;
+  champion: {
+    teamId: string;
+    teamName: string;
+    abbreviation: string;
+    primaryColor: string;
+    secondaryColor: string;
+    record: string;
+  } | null;
+}
+
 export default function SeasonPage() {
   const [season, setSeason] = useState<Season | null>(null);
   const [games, setGames] = useState<GameRow[]>([]);
+  const [history, setHistory] = useState<SeasonHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [advanceSummary, setAdvanceSummary] = useState<AdvanceSummary | null>(null);
 
   async function loadSeason() {
     const res = await fetch("/api/season/create");
@@ -54,6 +88,11 @@ export default function SeasonPage() {
         const gamesData = await gamesRes.json();
         setGames(gamesData.games ?? []);
       }
+    }
+    const historyRes = await fetch("/api/season/history").catch(() => null);
+    if (historyRes?.ok) {
+      const historyData = await historyRes.json();
+      setHistory(historyData.history ?? []);
     }
     setLoading(false);
   }
@@ -119,6 +158,28 @@ export default function SeasonPage() {
     }
   }
 
+  async function handleAdvanceFranchise() {
+    if (!season) return;
+    setBusy(true);
+    setError(null);
+    setAdvanceSummary(null);
+    try {
+      const res = await fetch("/api/season/advance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: season.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not advance the franchise");
+      setAdvanceSummary(data);
+      await loadSeason();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const progress = season ? Math.round((season.currentWeek / season.totalWeeks) * 100) : 0;
 
   return (
@@ -126,10 +187,49 @@ export default function SeasonPage() {
       <div>
         <p className="text-xs font-bold uppercase tracking-widest text-accent">Gameday</p>
         <h1 className="text-2xl font-black text-text-primary">Season</h1>
-        <p className="mt-1 text-sm text-text-muted">Create a season, generate a schedule, and simulate week by week or all at once.</p>
+        <p className="mt-1 text-sm text-text-muted">
+          Create a season, generate a schedule, simulate week by week or all at once, then advance the
+          franchise into the next year with player progression and retirement.
+        </p>
       </div>
 
       {error && <Card className="border-danger/40 p-4 text-sm text-danger">{error}</Card>}
+
+      {advanceSummary && (
+        <Card className="border-accent/40 p-5">
+          <p className="text-sm font-bold text-accent">
+            {advanceSummary.newSeasonName} begins! {advanceSummary.retiredCount} player
+            {advanceSummary.retiredCount === 1 ? "" : "s"} retired, {advanceSummary.rookieCount} rookie
+            {advanceSummary.rookieCount === 1 ? "" : "s"} drafted.
+          </p>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            {advanceSummary.notableRetirements.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Notable Retirements</p>
+                <ul className="flex flex-col gap-1 text-sm text-text-primary">
+                  {advanceSummary.notableRetirements.map((p, i) => (
+                    <li key={i}>
+                      {p.name} ({p.position}, {p.team}) — {p.overall} OVR
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {advanceSummary.notableRookies.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Notable Rookies</p>
+                <ul className="flex flex-col gap-1 text-sm text-text-primary">
+                  {advanceSummary.notableRookies.map((p, i) => (
+                    <li key={i}>
+                      {p.name} ({p.position}, {p.team}) — {p.overall} OVR
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {loading ? (
         <Skeleton className="h-40" />
@@ -148,18 +248,25 @@ export default function SeasonPage() {
           <Card className="p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-lg font-bold text-text-primary">{season.name}</p>
+                <p className="text-lg font-bold text-text-primary">
+                  {season.name} <span className="text-text-faint">({season.year})</span>
+                </p>
                 <Badge tone={season.status === "COMPLETED" ? "success" : "accent"}>
                   {season.status.replace("_", " ")}
                 </Badge>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" onClick={handleSimulateWeek} disabled={busy || season.status === "COMPLETED"}>
                   {busy ? "Simulating…" : "▶ Simulate Week"}
                 </Button>
                 <Button onClick={handleSimulateFull} disabled={busy || season.status === "COMPLETED"}>
                   {busy ? "Simulating…" : "⏭ Simulate Full Season"}
                 </Button>
+                {season.status === "COMPLETED" && (
+                  <Button variant="secondary" onClick={handleAdvanceFranchise} disabled={busy} className="border-accent/50">
+                    {busy ? "Advancing…" : "🏆 Advance to Next Season"}
+                  </Button>
+                )}
               </div>
             </div>
             <div className="mt-4">
@@ -204,6 +311,43 @@ export default function SeasonPage() {
             </section>
           )}
         </>
+      )}
+
+      {history.length > 1 && (
+        <section>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">Franchise History</p>
+          <Card className="divide-y divide-border-line p-0">
+            {history.map((h) => (
+              <div key={h.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-text-primary">
+                    {h.name} <span className="text-text-faint">({h.year})</span>
+                  </p>
+                  <Badge tone={h.status === "COMPLETED" ? "success" : "neutral"}>{h.status.replace("_", " ")}</Badge>
+                </div>
+                {h.champion ? (
+                  <div className="flex items-center gap-2">
+                    <TeamLogo
+                      seed={h.champion.teamId}
+                      primaryColor={h.champion.primaryColor}
+                      secondaryColor={h.champion.secondaryColor}
+                      abbreviation={h.champion.abbreviation}
+                      size={28}
+                    />
+                    <div className="text-right">
+                      <p className="text-xs text-text-faint">Champion</p>
+                      <p className="text-sm font-semibold text-text-primary">
+                        {h.champion.teamName} ({h.champion.record})
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-text-faint">In progress</p>
+                )}
+              </div>
+            ))}
+          </Card>
+        </section>
       )}
     </div>
   );
