@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Grep(*)",
+      "Glob(*)",
+
+      "Bash(pwd)",
+      "Bash(ls *)",
+      "Bash(find . *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(cat package.json)",
+
+      "Bash(npm install)",
+      "Bash(npm ci)",
+      "Bash(npm run dev)",
+      "Bash(npm run lint)",
+      "Bash(npm run build)",
+      "Bash(npm run test)",
+      "Bash(npx prisma generate)",
+      "Bash(npx prisma migrate dev *)",
+      "Bash(npx prisma db seed)",
+      "Bash(npx tsc --noEmit)",
+
+      "Bash(git init)",
+      "Bash(git status)",
+      "Bash(git add .)",
+      "Bash(git commit -m *)",
+      "Bash(git branch -M main)",
+      "Bash(git remote add origin *)",
+      "Bash(git push -u origin main)",
+
+      "Bash(gh repo create gridiron-franchise --public --source=. --remote=origin --push)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(gh repo delete *)",
+      "Bash(vercel --prod *)",
+      "Bash(npm publish *)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/*secret*)",
+      "Read(**/*token*)",
+      "Read(**/*key*)",
+
+      "Write(.env)",
+      "Write(.env.*)",
+      "Edit(.env)",
+      "Edit(.env.*)",
+
+      "Bash(rm -rf / *)",
+      "Bash(rm -rf ~ *)",
+      "Bash(rm -rf .git *)",
+      "Bash(sudo *)",
+      "Bash(chmod 777 *)",
+      "Bash(curl * | sh)",
+      "Bash(curl * | bash)",
+      "Bash(wget * | sh)",
+      "Bash(wget * | bash)"
+    ]
+  },
+  "env": {
+    "NEXT_TELEMETRY_DISABLED": "1"
+  }
+}
