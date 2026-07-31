@@ -53,6 +53,13 @@ export function DepthChartPanel({
       <div className="flex flex-col gap-3">
         {SLOTS.map((slot) => {
           const selected = findPlayer(current[slot.key]);
+          const takenByOtherSlots = new Set(
+            SLOTS.filter((s) => s.key !== slot.key)
+              .map((s) => current[s.key])
+              .filter((id): id is string => Boolean(id))
+          );
+          const availablePlayers = players.filter((p) => !takenByOtherSlots.has(p.id));
+
           return (
             <div key={slot.key} className="flex items-center gap-2">
               <span className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -64,7 +71,7 @@ export function DepthChartPanel({
                 onChange={(e) => onChange(slot.key, e.target.value || null)}
               >
                 <option value="">— Empty —</option>
-                {players.map((p) => (
+                {availablePlayers.map((p) => (
                   <option key={p.id} value={p.id}>
                     #{p.jerseyNumber} {p.firstName} {p.lastName} ({p.overall})
                   </option>

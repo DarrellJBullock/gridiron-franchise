@@ -13,6 +13,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const body = (await req.json()) as DepthChartUpdateBody;
 
+  const assignedIds = [body.starterPlayerId, body.backup1PlayerId, body.backup2PlayerId].filter(
+    (playerId): playerId is string => Boolean(playerId)
+  );
+  if (new Set(assignedIds).size !== assignedIds.length) {
+    return NextResponse.json(
+      { error: "A player can only occupy one depth chart slot per position" },
+      { status: 400 }
+    );
+  }
+
   const updated = await prisma.depthChart.upsert({
     where: { teamId_position: { teamId: id, position: body.position } },
     update: {
