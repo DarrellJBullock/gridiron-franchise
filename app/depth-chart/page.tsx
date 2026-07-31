@@ -80,13 +80,13 @@ function DepthChartInner() {
     return map;
   }, [allPlayers]);
 
-  async function handleChange(
-    position: Position,
-    slot: "starterPlayerId" | "backup1PlayerId" | "backup2PlayerId",
-    playerId: string | null
-  ) {
-    const current = chart[position] ?? { position, starterPlayerId: null, backup1PlayerId: null, backup2PlayerId: null };
-    const updated = { ...current, [slot]: playerId };
+  async function handleReorder(position: Position, orderedPlayerIds: string[]) {
+    const updated = {
+      position,
+      starterPlayerId: orderedPlayerIds[0] ?? null,
+      backup1PlayerId: orderedPlayerIds[1] ?? null,
+      backup2PlayerId: orderedPlayerIds[2] ?? null,
+    };
     setChart((prev) => ({ ...prev, [position]: updated }));
     setSavingPosition(position);
     await fetch(`/api/teams/${teamId}/depth-chart`, {
@@ -127,27 +127,27 @@ function DepthChartInner() {
       ) : allPlayers.length === 0 ? (
         <EmptyState title="No roster for this team" description="Upload a roster to build a depth chart." />
       ) : (
-        <div className="flex flex-col gap-8">
+        <div key={teamId} className="flex flex-col gap-8">
           <PositionGroupSection
             title="Offense"
             positions={POSITION_GROUPS.offense}
             playersByPosition={playersByPosition}
             chart={chart}
-            onChange={handleChange}
+            onReorder={handleReorder}
           />
           <PositionGroupSection
             title="Defense"
             positions={POSITION_GROUPS.defense}
             playersByPosition={playersByPosition}
             chart={chart}
-            onChange={handleChange}
+            onReorder={handleReorder}
           />
           <PositionGroupSection
             title="Special Teams"
             positions={POSITION_GROUPS.specialTeams}
             playersByPosition={playersByPosition}
             chart={chart}
-            onChange={handleChange}
+            onReorder={handleReorder}
           />
         </div>
       )}
@@ -160,13 +160,13 @@ function PositionGroupSection({
   positions,
   playersByPosition,
   chart,
-  onChange,
+  onReorder,
 }: {
   title: string;
   positions: Position[];
   playersByPosition: Map<Position, (DepthChartPlayerOption & { position: Position })[]>;
   chart: Record<Position, DepthChartRow>;
-  onChange: (position: Position, slot: "starterPlayerId" | "backup1PlayerId" | "backup2PlayerId", playerId: string | null) => void;
+  onReorder: (position: Position, orderedPlayerIds: string[]) => void;
 }) {
   return (
     <section>
@@ -182,7 +182,7 @@ function PositionGroupSection({
               starterPlayerId={row?.starterPlayerId}
               backup1PlayerId={row?.backup1PlayerId}
               backup2PlayerId={row?.backup2PlayerId}
-              onChange={(slot, playerId) => onChange(position, slot, playerId)}
+              onReorder={(orderedPlayerIds) => onReorder(position, orderedPlayerIds)}
             />
           );
         })}
