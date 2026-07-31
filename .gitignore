@@ -36,6 +36,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local-only dev database connection string (never commit real credentials)
+.dev-db-url.txt
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/app/generated/prisma

@@ -1,0 +1,321 @@
+// Gridiron Franchise - Prisma schema
+// Original fictional football simulation data model. No real leagues, teams, or players.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Position {
+  QB
+  RB
+  FB
+  WR
+  TE
+  LT
+  LG
+  C
+  RG
+  RT
+  LE
+  RE
+  DT
+  LOLB
+  MLB
+  ROLB
+  CB
+  FS
+  SS
+  K
+  P
+}
+
+enum GameStatus {
+  SCHEDULED
+  IN_PROGRESS
+  FINAL
+}
+
+enum SeasonStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum RosterImportStatus {
+  PENDING
+  VALIDATED
+  FAILED
+  IMPORTED
+}
+
+enum IssueSeverity {
+  ERROR
+  WARNING
+}
+
+model League {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teams   Team[]
+  seasons Season[]
+}
+
+model Team {
+  id              String   @id @default(cuid())
+  leagueId        String
+  name            String
+  abbreviation    String
+  city            String
+  state           String?
+  primaryColor    String   @default("#0EA5E9")
+  secondaryColor  String   @default("#0F172A")
+  logoPlaceholder String   @default("shield")
+  offenseRating   Int      @default(0)
+  defenseRating   Int      @default(0)
+  specialTeamsRating Int   @default(0)
+  overallRating   Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  league       League        @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  players      Player[]
+  depthCharts  DepthChart[]
+  homeGames    Game[]        @relation("HomeTeam")
+  awayGames    Game[]        @relation("AwayTeam")
+  gameStats    GameTeamStats[]
+  seasonTeams  SeasonTeam[]
+  standings    Standing[]
+
+  @@index([leagueId])
+}
+
+model Player {
+  id            String   @id @default(cuid())
+  teamId        String
+  firstName     String
+  lastName      String
+  jerseyNumber  Int
+  position      Position
+  height        Int // inches
+  weight        Int // pounds
+  classYear     String
+  hometown      String
+  archetype     String
+  overall       Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  team    Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  ratings PlayerRating[]
+  gameStats GamePlayerStats[]
+  depthChartStarter DepthChart[] @relation("Starter")
+  depthChartBackup1 DepthChart[] @relation("Backup1")
+  depthChartBackup2 DepthChart[] @relation("Backup2")
+
+  @@index([teamId])
+  @@index([position])
+}
+
+model PlayerRating {
+  id          String @id @default(cuid())
+  playerId    String
+  ratingName  String
+  ratingValue Int
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, ratingName])
+  @@index([playerId])
+}
+
+model DepthChart {
+  id              String   @id @default(cuid())
+  teamId          String
+  position        Position
+  starterPlayerId String?
+  backup1PlayerId String?
+  backup2PlayerId String?
+  updatedAt       DateTime @updatedAt
+
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  starter Player? @relation("Starter", fields: [starterPlayerId], references: [id])
+  backup1 Player? @relation("Backup1", fields: [backup1PlayerId], references: [id])
+  backup2 Player? @relation("Backup2", fields: [backup2PlayerId], references: [id])
+
+  @@unique([teamId, position])
+}
+
+model Season {
+  id        String       @id @default(cuid())
+  leagueId  String
+  name      String
+  year      Int
+  status    SeasonStatus @default(NOT_STARTED)
+  currentWeek Int        @default(0)
+  totalWeeks  Int        @default(8)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  league      League       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  games       Game[]
+  seasonTeams SeasonTeam[]
+  standings   Standing[]
+
+  @@index([leagueId])
+}
+
+model SeasonTeam {
+  id       String @id @default(cuid())
+  seasonId String
+  teamId   String
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, teamId])
+}
+
+model Game {
+  id         String     @id @default(cuid())
+  seasonId   String?
+  homeTeamId String
+  awayTeamId String
+  homeScore  Int        @default(0)
+  awayScore  Int        @default(0)
+  status     GameStatus @default(SCHEDULED)
+  week       Int        @default(1)
+  gameDate   DateTime   @default(now())
+  summary    String?
+  homeQuarterScores Int[] @default([])
+  awayQuarterScores Int[] @default([])
+  turningPoint      String?
+  playStyleSummary  String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  season   Season?         @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  homeTeam Team            @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam Team            @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  teamStats   GameTeamStats[]
+  playerStats GamePlayerStats[]
+
+  @@index([seasonId])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+}
+
+model GameTeamStats {
+  id                    String @id @default(cuid())
+  gameId                String
+  teamId                String
+  totalYards            Int    @default(0)
+  passingYards          Int    @default(0)
+  rushingYards          Int    @default(0)
+  turnovers             Int    @default(0)
+  firstDowns            Int    @default(0)
+  thirdDownConversions  String @default("0/0")
+  timeOfPossession      String @default("00:00")
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, teamId])
+}
+
+model GamePlayerStats {
+  id                   String @id @default(cuid())
+  gameId               String
+  playerId             String
+  passingYards         Int    @default(0)
+  passingTouchdowns    Int    @default(0)
+  interceptions        Int    @default(0)
+  rushingYards         Int    @default(0)
+  rushingTouchdowns    Int    @default(0)
+  receivingYards       Int    @default(0)
+  receivingTouchdowns  Int    @default(0)
+  tackles              Int    @default(0)
+  sacks                Float  @default(0)
+  forcedFumbles        Int    @default(0)
+  fieldGoalsMade       Int    @default(0)
+
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([gameId])
+  @@index([playerId])
+}
+
+model Standing {
+  id           String  @id @default(cuid())
+  seasonId     String
+  teamId       String
+  wins         Int     @default(0)
+  losses       Int     @default(0)
+  ties         Int     @default(0)
+  pointsFor    Int     @default(0)
+  pointsAgainst Int    @default(0)
+  streak       String  @default("-")
+  division     String  @default("Atlantic")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, teamId])
+}
+
+model RosterImport {
+  id             String              @id @default(cuid())
+  fileName       String
+  status         RosterImportStatus  @default(PENDING)
+  rowCount       Int                 @default(0)
+  validRowCount  Int                 @default(0)
+  errorCount     Int                 @default(0)
+  warningCount   Int                 @default(0)
+  createdAt      DateTime            @default(now())
+
+  rows   RosterImportRow[]
+  issues RosterValidationIssue[]
+}
+
+model RosterImportRow {
+  id             String @id @default(cuid())
+  rosterImportId String
+  rowNumber      Int
+  rawData        Json
+  isValid        Boolean @default(true)
+
+  rosterImport RosterImport @relation(fields: [rosterImportId], references: [id], onDelete: Cascade)
+
+  @@index([rosterImportId])
+}
+
+model RosterValidationIssue {
+  id             String        @id @default(cuid())
+  rosterImportId String
+  rowNumber      Int
+  severity       IssueSeverity
+  fieldName      String
+  message        String
+
+  rosterImport RosterImport @relation(fields: [rosterImportId], references: [id], onDelete: Cascade)
+
+  @@index([rosterImportId])
+}
+
+model AuditEvent {
+  id           String   @id @default(cuid())
+  eventType    String
+  resourceType String
+  resourceId   String
+  message      String
+  createdAt    DateTime @default(now())
+}

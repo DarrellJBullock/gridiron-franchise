@@ -1,65 +1,134 @@
-import Image from "next/image";
+import { prisma } from "@/lib/prisma";
+import { LinkButton } from "@/components/ui/Button";
+import { MetricCard } from "@/components/ui/MetricCard";
+import { TeamCard } from "@/components/football/TeamCard";
+import { GameSummaryCard } from "@/components/simulation/GameSummaryCard";
+import { EmptyState } from "@/components/ui/EmptyState";
 
-export default function Home() {
+export default async function HomePage() {
+  const [teamCount, playerCount, gameCount, topTeams, recentGames] = await Promise.all([
+    prisma.team.count(),
+    prisma.player.count(),
+    prisma.game.count({ where: { status: "FINAL" } }),
+    prisma.team.findMany({
+      orderBy: { overallRating: "desc" },
+      take: 4,
+      include: { _count: { select: { players: true } } },
+    }),
+    prisma.game.findMany({
+      where: { status: "FINAL" },
+      orderBy: { updatedAt: "desc" },
+      take: 3,
+      include: { homeTeam: true, awayTeam: true },
+    }),
+  ]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex flex-col gap-10">
+      <section className="relative overflow-hidden rounded-2xl border border-border-line bg-gradient-to-br from-bg-elevated via-surface to-bg-elevated p-8 md:p-12">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent">Portfolio Project</p>
+        <h1 className="mt-3 max-w-2xl text-3xl font-black leading-tight text-text-primary md:text-5xl">
+          Gridiron Franchise: an original football operations command center
+        </h1>
+        <p className="mt-4 max-w-2xl text-sm text-text-muted md:text-base">
+          Upload custom rosters from Excel, rate every player from 0-100 across position-specific skills,
+          build depth charts, preview matchups, and simulate full seasons with a franchise-style game
+          engine — all fictional teams and players, built end-to-end with Next.js, TypeScript, PostgreSQL,
+          and Prisma.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <LinkButton href="/roster-upload" size="lg">
+            📤 Upload a Roster
+          </LinkButton>
+          <LinkButton href="/matchup" variant="secondary" size="lg">
+            ⚔️ Simulate a Game
+          </LinkButton>
+          <LinkButton href="/teams" variant="ghost" size="lg">
+            View Teams →
+          </LinkButton>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <p className="mt-6 max-w-2xl text-xs text-text-faint">
+          Fictional branding notice: all leagues, teams, players, and logos in Gridiron Franchise are
+          entirely original. No real NFL, NCAA, Madden, or EA Sports names, logos, or players are used.
+        </p>
+      </section>
+
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <MetricCard label="Teams" value={teamCount} accent="accent" icon="🛡️" />
+        <MetricCard label="Players" value={playerCount} accent="blue" icon="🧢" />
+        <MetricCard label="Games Simulated" value={gameCount} accent="success" icon="🏈" />
+        <MetricCard label="Rating Scale" value="0-100" accent="danger" icon="📊" hint="Every skill rated" />
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-text-primary">Top Rated Teams</h2>
+          <LinkButton href="/teams" variant="ghost" size="sm">
+            See all teams →
+          </LinkButton>
         </div>
-      </main>
+        {topTeams.length === 0 ? (
+          <EmptyState
+            title="No teams yet"
+            description="Upload a roster or reseed the database to populate the league."
+            action={<LinkButton href="/roster-upload" size="sm">Upload a Roster</LinkButton>}
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {topTeams.map((team) => (
+              <TeamCard
+                key={team.id}
+                team={{
+                  id: team.id,
+                  name: team.name,
+                  abbreviation: team.abbreviation,
+                  city: team.city,
+                  state: team.state,
+                  primaryColor: team.primaryColor,
+                  secondaryColor: team.secondaryColor,
+                  overallRating: team.overallRating,
+                  offenseRating: team.offenseRating,
+                  defenseRating: team.defenseRating,
+                  rosterSize: team._count.players,
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-text-primary">Simulation Snapshot</h2>
+          <LinkButton href="/season" variant="ghost" size="sm">
+            Season hub →
+          </LinkButton>
+        </div>
+        {recentGames.length === 0 ? (
+          <EmptyState
+            title="No games simulated yet"
+            description="Head to the Matchup page to simulate your first game."
+            action={<LinkButton href="/matchup" size="sm">Go to Matchup</LinkButton>}
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {recentGames.map((game) => (
+              <GameSummaryCard
+                key={game.id}
+                gameId={game.id}
+                homeName={game.homeTeam.name}
+                homeAbbr={game.homeTeam.abbreviation}
+                awayName={game.awayTeam.name}
+                awayAbbr={game.awayTeam.abbreviation}
+                homeScore={game.homeScore}
+                awayScore={game.awayScore}
+                week={game.week}
+                summary={game.summary ?? undefined}
+              />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -1,26 +1,79 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #05070d;
+  --bg-elevated: #0a0e18;
+  --surface: #0f1420;
+  --surface-hover: #161d2e;
+  --border-line: #1f2937;
+  --field-green: #16a34a;
+  --accent: #f5a623;
+  --accent-strong: #fbbf24;
+  --accent-blue: #38bdf8;
+  --text-primary: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+  --danger: #f87171;
+  --success: #4ade80;
+  --warning: #facc15;
 }
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-border-line: var(--border-line);
+  --color-field: var(--field-green);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-blue: var(--accent-blue);
+  --color-text-primary: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: radial-gradient(circle at top, #0b1220 0%, var(--background) 55%);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+/* Faint yard-line texture used behind hero/section headers for a playbook feel. */
+.field-texture {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      rgba(148, 163, 184, 0.05) 0px,
+      rgba(148, 163, 184, 0.05) 1px,
+      transparent 1px,
+      transparent 64px
+    );
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border-line);
+  border-radius: 9999px;
+}
+
+@keyframes rating-fill {
+  from {
+    width: 0%;
+  }
+}
+.rating-fill {
+  animation: rating-fill 700ms ease-out;
 }
