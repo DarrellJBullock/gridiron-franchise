@@ -12,11 +12,9 @@ const STACK = [
 
 const ROADMAP = [
   "Drag-and-drop depth chart reordering",
-  "Play-by-play drive log instead of drive-level summaries only",
   "Multi-season franchise mode with player progression and retirement",
   "Trade and free agency simulation",
   "Authentication so each user manages their own franchise",
-  "Team/player logo and jersey generator",
 ];
 
 export default function AboutPage() {

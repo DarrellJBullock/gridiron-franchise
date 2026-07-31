@@ -41,9 +41,10 @@ cohesive sports-broadcast-style dashboard UI — all original IP so it's safe to
 - Player cards with a radar chart and grouped rating bars
 - Editable depth charts per position with starter/backup1/backup2 slots
 - Matchup preview with team comparison bars and a simulated win probability
-- A drive-based statistical game simulation engine (not physics) with quarter-by-quarter scoring, team stats, player stat lines, a summary, turning point, and top performers
+- A drive-based statistical game simulation engine (not physics) with quarter-by-quarter scoring, team stats, player stat lines, a full play-by-play log, a summary, turning point, and top performers
 - Full season creation with a round-robin schedule, week-by-week or full-season simulation, and live standings
 - League-wide stat leaderboards (passing, rushing, receiving, defense, kicking)
+- Procedurally generated team logos and player jerseys — deterministic SVGs built from each team's own colors, no external images or generation services
 - Dark, responsive, mobile-first "football operations command center" UI
 
 This is intentionally **not** a basic CRUD app — the roster validator, rating system, and simulation
@@ -230,8 +231,6 @@ and branding are invented for demonstration purposes only.
 ## Future Roadmap
 
 - Drag-and-drop depth chart reordering
-- Play-by-play drive log instead of drive-level summaries only
 - Multi-season franchise mode with player progression and retirement
 - Trade and free agency simulation
 - Authentication so each user manages their own franchise
-- Team/player logo and jersey generator
