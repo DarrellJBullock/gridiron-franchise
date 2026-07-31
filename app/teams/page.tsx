@@ -3,6 +3,8 @@ import { TeamCard } from "@/components/football/TeamCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkButton } from "@/components/ui/Button";
 
+export const dynamic = "force-dynamic";
+
 export default async function TeamsPage() {
   const teams = await prisma.team.findMany({
     orderBy: { overallRating: "desc" },

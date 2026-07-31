@@ -1,6 +1,8 @@
 import { getStatLeaders } from "@/lib/stats/leaders";
 import { StatLeaderTable } from "@/components/football/StatLeaderTable";
 
+export const dynamic = "force-dynamic";
+
 export default async function StatsPage() {
   const leaders = await getStatLeaders();
 

@@ -6,6 +6,8 @@ import { TeamCard } from "@/components/football/TeamCard";
 import { StandingsTable } from "@/components/football/StandingsTable";
 import { EmptyState } from "@/components/ui/EmptyState";
 
+export const dynamic = "force-dynamic";
+
 export default async function LeaguePage() {
   const league = await prisma.league.findFirst({ orderBy: { createdAt: "asc" } });
   const teams = await prisma.team.findMany({

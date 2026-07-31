@@ -3,6 +3,8 @@ import { StandingsTable } from "@/components/football/StandingsTable";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkButton } from "@/components/ui/Button";
 
+export const dynamic = "force-dynamic";
+
 export default async function StandingsPage() {
   const season = await prisma.season.findFirst({ orderBy: { createdAt: "desc" } });
   const standings = season

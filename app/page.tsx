@@ -5,6 +5,8 @@ import { TeamCard } from "@/components/football/TeamCard";
 import { GameSummaryCard } from "@/components/simulation/GameSummaryCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const [teamCount, playerCount, gameCount, topTeams, recentGames] = await Promise.all([
     prisma.team.count(),
