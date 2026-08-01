@@ -118,6 +118,19 @@ export function generateDrivePlays(ctx: DrivePlayContext): Omit<PlayByPlayEntry,
   const turnoverPool = distributeYards(isTurnoverDrive ? ctx.turnoverYards : 0, 2, 14);
 
   type Chunk = { type: "run" | "pass"; yards: number };
+
+  // On a touchdown, the scoring play's yardage has to come out of the same
+  // rush/pass budget that gets credited to the player's stats — pulling it
+  // from a chunk here (rather than inventing "however far it is to the
+  // goal line" later) is what keeps the box score's total in sync with the
+  // touchdown play's stated distance.
+  let scoringChunk: Chunk | undefined;
+  if (ctx.outcome === "touchdown") {
+    const pool = ctx.scoredOnGround ? rushPool : passPool;
+    const yards = pool.pop();
+    if (yards !== undefined) scoringChunk = { type: ctx.scoredOnGround ? "run" : "pass", yards };
+  }
+
   const chunks: Chunk[] = shuffled([
     ...rushPool.map((yards): Chunk => ({ type: "run", yards })),
     ...passPool.map((yards): Chunk => ({ type: "pass", yards })),
@@ -168,7 +181,7 @@ export function generateDrivePlays(ctx: DrivePlayContext): Omit<PlayByPlayEntry,
   const final = { ...state };
   switch (ctx.outcome) {
     case "touchdown": {
-      const yards = Math.max(1, 100 - final.yardLine);
+      const yards = scoringChunk?.yards ?? Math.max(1, 100 - final.yardLine);
       const scorerDesc = ctx.scoredOnGround
         ? `${shortName(ctx.rb, "The running back")} rushes ${yards} yard${yards === 1 ? "" : "s"} for the touchdown!`
         : `${shortName(ctx.qb, "The QB")} pass to ${shortName(ctx.receiver, "the receiver")}, ${yards} yard${
