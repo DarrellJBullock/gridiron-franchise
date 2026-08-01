@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/Badge";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { GameSummaryCard } from "@/components/simulation/GameSummaryCard";
 import { TeamLogo } from "@/components/football/TeamLogo";
+import { PlayoffBracket } from "@/components/football/PlayoffBracket";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
+import type { PlayoffBracketResult } from "@/lib/simulation/playoffs";
 
 interface Season {
   id: string;
@@ -36,6 +38,7 @@ interface GameRow {
   homeTeam: GameTeam;
   awayTeam: GameTeam;
   summary: string | null;
+  isPlayoff: boolean;
 }
 
 interface FranchiseNote {
@@ -65,6 +68,7 @@ interface SeasonHistoryEntry {
     primaryColor: string;
     secondaryColor: string;
     record: string;
+    source: "playoff" | "record";
   } | null;
 }
 
@@ -72,6 +76,7 @@ export default function SeasonPage() {
   const [season, setSeason] = useState<Season | null>(null);
   const [games, setGames] = useState<GameRow[]>([]);
   const [history, setHistory] = useState<SeasonHistoryEntry[]>([]);
+  const [bracket, setBracket] = useState<PlayoffBracketResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,11 +87,17 @@ export default function SeasonPage() {
     const data = await res.json();
     const latest = data.seasons?.[0] ?? null;
     setSeason(latest);
+    setBracket(null);
     if (latest) {
       const gamesRes = await fetch(`/api/games?seasonId=${latest.id}`).catch(() => null);
       if (gamesRes?.ok) {
         const gamesData = await gamesRes.json();
         setGames(gamesData.games ?? []);
+      }
+      const bracketRes = await fetch(`/api/season/simulate-playoffs?seasonId=${latest.id}`).catch(() => null);
+      if (bracketRes?.ok) {
+        const bracketData = await bracketRes.json();
+        setBracket(bracketData.bracket ?? null);
       }
     }
     const historyRes = await fetch("/api/season/history").catch(() => null);
@@ -158,6 +169,31 @@ export default function SeasonPage() {
     }
   }
 
+  async function handleSimulatePlayoffs() {
+    if (!season) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/season/simulate-playoffs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: season.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not run the playoffs");
+      setBracket(data);
+      const historyRes = await fetch("/api/season/history").catch(() => null);
+      if (historyRes?.ok) {
+        const historyData = await historyRes.json();
+        setHistory(historyData.history ?? []);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleAdvanceFranchise() {
     if (!season) return;
     setBusy(true);
@@ -181,6 +217,7 @@ export default function SeasonPage() {
   }
 
   const progress = season ? Math.round((season.currentWeek / season.totalWeeks) * 100) : 0;
+  const regularSeasonGames = games.filter((g) => !g.isPlayoff);
 
   return (
     <div className="flex flex-col gap-8">
@@ -188,8 +225,9 @@ export default function SeasonPage() {
         <p className="text-xs font-bold uppercase tracking-widest text-accent">Gameday</p>
         <h1 className="text-2xl font-black text-text-primary">Season</h1>
         <p className="mt-1 text-sm text-text-muted">
-          Create a season, generate a schedule, simulate week by week or all at once, then advance the
-          franchise into the next year with player progression and retirement.
+          Create a season, generate a schedule, simulate week by week or all at once, optionally run a
+          4-team playoff bracket, then advance the franchise into the next year with player progression
+          and retirement.
         </p>
       </div>
 
@@ -262,6 +300,11 @@ export default function SeasonPage() {
                 <Button onClick={handleSimulateFull} disabled={busy || season.status === "COMPLETED"}>
                   {busy ? "Simulating…" : "⏭ Simulate Full Season"}
                 </Button>
+                {season.status === "COMPLETED" && !bracket?.championship?.status && (
+                  <Button variant="secondary" onClick={handleSimulatePlayoffs} disabled={busy} className="border-accent-blue/50">
+                    {busy ? "Running…" : "🏈 Run Playoffs"}
+                  </Button>
+                )}
                 {season.status === "COMPLETED" && (
                   <Button variant="secondary" onClick={handleAdvanceFranchise} disabled={busy} className="border-accent/50">
                     {busy ? "Advancing…" : "🏆 Advance to Next Season"}
@@ -284,16 +327,20 @@ export default function SeasonPage() {
 
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <MetricCard label="Total Weeks" value={season.totalWeeks} />
-            <MetricCard label="Games Played" value={games.filter((g) => g.status === "FINAL").length} accent="blue" />
-            <MetricCard label="Games Scheduled" value={games.filter((g) => g.status === "SCHEDULED").length} accent="danger" />
+            <MetricCard label="Games Played" value={regularSeasonGames.filter((g) => g.status === "FINAL").length} accent="blue" />
+            <MetricCard label="Games Scheduled" value={regularSeasonGames.filter((g) => g.status === "SCHEDULED").length} accent="danger" />
             <MetricCard label="Status" value={season.status === "COMPLETED" ? "Done" : "Live"} accent="success" />
           </div>
 
-          {games.filter((g) => g.status === "FINAL").length > 0 && (
+          {bracket && (
+            <PlayoffBracket semifinals={bracket.semifinals} championship={bracket.championship} />
+          )}
+
+          {regularSeasonGames.filter((g) => g.status === "FINAL").length > 0 && (
             <section>
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">Completed Games</p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {games
+                {regularSeasonGames
                   .filter((g) => g.status === "FINAL")
                   .map((g) => (
                     <GameSummaryCard
@@ -335,7 +382,9 @@ export default function SeasonPage() {
                       size={28}
                     />
                     <div className="text-right">
-                      <p className="text-xs text-text-faint">Champion</p>
+                      <p className="text-xs text-text-faint">
+                        {h.champion.source === "playoff" ? "🏆 Playoff Champion" : "Best Record"}
+                      </p>
                       <p className="text-sm font-semibold text-text-primary">
                         {h.champion.teamName} ({h.champion.record})
                       </p>

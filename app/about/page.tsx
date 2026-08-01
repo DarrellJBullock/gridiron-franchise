@@ -82,7 +82,9 @@ export default function AboutPage() {
           never deleted — they&apos;re just marked retired and backfilled with a freshly generated rookie
           at the same position. Depth charts and team ratings are rebuilt automatically, and a new season
           gets a fresh schedule and reset standings. A Franchise History list tracks every season&apos;s
-          champion over time.
+          champion over time. Before advancing, you can optionally <strong>Run Playoffs</strong> — a
+          4-team single-elimination bracket seeded by regular-season record — and the bracket winner
+          becomes that season&apos;s champion instead of whoever simply finished with the best record.
         </p>
       </Card>
 

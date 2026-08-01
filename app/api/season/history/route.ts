@@ -13,27 +13,63 @@ export async function GET(req: Request) {
     },
   });
 
+  const championshipGames = await prisma.game.findMany({
+    where: {
+      seasonId: { in: seasons.map((s) => s.id) },
+      isPlayoff: true,
+      playoffRound: "Championship",
+      status: "FINAL",
+    },
+    include: { homeTeam: true, awayTeam: true },
+  });
+  const championshipBySeason = new Map(championshipGames.map((g) => [g.seasonId, g]));
+
   const history = seasons.map((season) => {
+    const championshipGame = championshipBySeason.get(season.id);
+
+    if (championshipGame) {
+      const winnerTeam = championshipGame.homeScore > championshipGame.awayScore ? championshipGame.homeTeam : championshipGame.awayTeam;
+      const winnerStanding = season.standings.find((s) => s.teamId === winnerTeam.id);
+      return {
+        id: season.id,
+        name: season.name,
+        year: season.year,
+        status: season.status,
+        champion: {
+          teamId: winnerTeam.id,
+          teamName: winnerTeam.name,
+          abbreviation: winnerTeam.abbreviation,
+          primaryColor: winnerTeam.primaryColor,
+          secondaryColor: winnerTeam.secondaryColor,
+          record: winnerStanding
+            ? `${winnerStanding.wins}-${winnerStanding.losses}${winnerStanding.ties ? `-${winnerStanding.ties}` : ""}`
+            : "",
+          source: "playoff" as const,
+        },
+      };
+    }
+
     const ranked = [...season.standings].sort((a, b) => {
       const winPctA = a.wins / Math.max(1, a.wins + a.losses + a.ties);
       const winPctB = b.wins / Math.max(1, b.wins + b.losses + b.ties);
       return winPctB - winPctA || b.pointsFor - a.pointsFor;
     });
-    const champion = season.status === "COMPLETED" ? ranked[0] : undefined;
+    const bestRecord = season.status === "COMPLETED" ? ranked[0] : undefined;
 
     return {
       id: season.id,
       name: season.name,
       year: season.year,
       status: season.status,
-      champion: champion
+      champion: bestRecord
         ? {
-            teamId: champion.teamId,
-            teamName: champion.team.name,
-            abbreviation: champion.team.abbreviation,
-            primaryColor: champion.team.primaryColor,
-            secondaryColor: champion.team.secondaryColor,
-            record: `${champion.wins}-${champion.losses}${champion.ties ? `-${champion.ties}` : ""}`,
+            teamId: bestRecord.teamId,
+            teamName: bestRecord.team.name,
+            abbreviation: bestRecord.team.abbreviation,
+            primaryColor: bestRecord.team.primaryColor,
+            secondaryColor: bestRecord.team.secondaryColor,
+            record: `${bestRecord.wins}-${bestRecord.losses}${bestRecord.ties ? `-${bestRecord.ties}` : ""}`,
+            source: "record" as const,
           }
         : null,
     };

@@ -43,6 +43,7 @@ cohesive sports-broadcast-style dashboard UI — all original IP so it's safe to
 - Matchup preview with team comparison bars and a simulated win probability
 - A drive-based statistical game simulation engine (not physics) with quarter-by-quarter scoring, team stats, player stat lines, a full play-by-play log, a summary, turning point, and top performers
 - Full season creation with a round-robin schedule, week-by-week or full-season simulation, and live standings
+- Optional 4-team single-elimination playoff bracket, seeded by regular-season record
 - Multi-season franchise mode: advance to the next year and every player ages, ratings drift up or down based on age, some retire, and rookies are drafted in to backfill — with a franchise history view showing each season's champion
 - League-wide stat leaderboards (passing, rushing, receiving, defense, kicking)
 - Procedurally generated team logos and player jerseys — deterministic SVGs built from each team's own colors, no external images or generation services
@@ -140,7 +141,17 @@ you click **Advance to Next Season** on the Season page. For every active player
 
 A new season is then created with a fresh round-robin schedule and reset standings. The Season page shows
 a summary of notable retirements and rookies after each advance, plus a **Franchise History** list of
-every past season's champion (best regular-season record).
+every past season's champion.
+
+### Playoffs (optional)
+
+Once a season is `COMPLETED`, **Run Playoffs** (`lib/simulation/playoffs.ts`) seeds the top 4 teams by
+regular-season record into a single-elimination bracket — 1 vs. 4 and 2 vs. 3 in the semifinals, then a
+championship game, with the higher remaining seed hosting each round. Playoff games are simulated with
+the same engine as every other game (full play-by-play, box score, recap page) but never affect regular-
+season standings. Running the playoffs is entirely optional: skip it and the season's "champion" in
+Franchise History falls back to the best regular-season record; run it and the bracket winner takes over
+that title instead.
 
 ## Data Model
 
@@ -160,7 +171,8 @@ schema.
 `GET /api/players/[id]`, `POST /api/roster/upload`, `GET /api/roster/upload`,
 `GET /api/roster/template`, `GET /api/games`, `GET /api/games/[id]`, `POST /api/games/simulate`,
 `POST /api/season/create`, `GET /api/season/create`, `POST /api/season/simulate-week`,
-`POST /api/season/simulate-full`, `GET /api/standings`, `GET /api/stats/leaders`
+`POST /api/season/simulate-full`, `POST /api/season/simulate-playoffs`, `GET /api/season/simulate-playoffs`,
+`POST /api/season/advance`, `GET /api/season/history`, `GET /api/standings`, `GET /api/stats/leaders`
 
 ## Local Setup
 

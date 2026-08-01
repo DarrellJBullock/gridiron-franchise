@@ -8,9 +8,22 @@ interface PersistGameInput {
   week: number;
   result: SimulatedGameResult;
   gameId?: string;
+  isPlayoff?: boolean;
+  playoffRound?: string;
+  countsForStandings?: boolean;
 }
 
-export async function persistSimulatedGame({ homeTeamId, awayTeamId, seasonId, week, result, gameId }: PersistGameInput) {
+export async function persistSimulatedGame({
+  homeTeamId,
+  awayTeamId,
+  seasonId,
+  week,
+  result,
+  gameId,
+  isPlayoff,
+  playoffRound,
+  countsForStandings = true,
+}: PersistGameInput) {
   const sharedData = {
     homeScore: result.homeScore,
     awayScore: result.awayScore,
@@ -25,7 +38,7 @@ export async function persistSimulatedGame({ homeTeamId, awayTeamId, seasonId, w
   const game = gameId
     ? await prisma.game.update({ where: { id: gameId }, data: sharedData })
     : await prisma.game.create({
-        data: { seasonId, homeTeamId, awayTeamId, week, ...sharedData },
+        data: { seasonId, homeTeamId, awayTeamId, week, isPlayoff, playoffRound, ...sharedData },
       });
 
   await prisma.gameTeamStats.createMany({
@@ -75,7 +88,7 @@ export async function persistSimulatedGame({ homeTeamId, awayTeamId, seasonId, w
     });
   }
 
-  if (seasonId) {
+  if (seasonId && countsForStandings) {
     await updateStandingsForGame(seasonId, homeTeamId, awayTeamId, result.homeScore, result.awayScore);
   }
 
