@@ -5,15 +5,13 @@ const STACK = [
   "React & TypeScript",
   "Tailwind CSS v4",
   "PostgreSQL + Prisma",
+  "Clerk authentication",
   "Zod validation",
   "ExcelJS for roster templates & parsing",
   "Recharts for radar/data visualization",
 ];
 
-const ROADMAP = [
-  "Trade and free agency simulation",
-  "Authentication so each user manages their own franchise",
-];
+const ROADMAP = ["Trade and free agency simulation"];
 
 export default function AboutPage() {
   return (
@@ -85,6 +83,17 @@ export default function AboutPage() {
           champion over time. Before advancing, you can optionally <strong>Run Playoffs</strong> — a
           4-team single-elimination bracket seeded by regular-season record — and the bracket winner
           becomes that season&apos;s champion instead of whoever simply finished with the best record.
+        </p>
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="mb-2 text-lg font-bold text-text-primary">Authentication & Multi-Tenancy</h2>
+        <p className="text-sm text-text-muted">
+          Sign-up and sign-in are handled by Clerk. Every account owns exactly one league — the first time
+          you sign in, a fresh 8-team, 360-player league with a scheduled season is generated just for you.
+          Every API route and page checks the signed-in user before touching the database, so franchises
+          are fully private: there&apos;s no shared league, and looking up another user&apos;s game, team, or
+          player by ID returns a 404 instead of leaking their data.
         </p>
       </Card>
 

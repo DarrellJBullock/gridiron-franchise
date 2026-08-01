@@ -26,6 +26,7 @@ cohesive sports-broadcast-style dashboard UI — all original IP so it's safe to
 - **Next.js App Router** + **React 19** + **TypeScript**
 - **Tailwind CSS v4** for a dark, sports-broadcast-inspired design system
 - **PostgreSQL** + **Prisma ORM** for the relational data model
+- **Clerk** for authentication (sign-up/sign-in, session management)
 - **Zod** for schema validation (0-100 rating ranges, position enums, jersey numbers, etc.)
 - **ExcelJS** for generating and parsing the roster upload template
 - **Recharts** for the player ratings radar chart
@@ -33,6 +34,7 @@ cohesive sports-broadcast-style dashboard UI — all original IP so it's safe to
 
 ## Features
 
+- Clerk-backed authentication: every account gets its own private franchise (league, teams, players, seasons, games) — nothing is shared between users
 - League, team, and player management backed by a real relational schema
 - Downloadable Excel and CSV roster templates with sample rows and an instructions tab
 - Full roster upload pipeline: parse → validate → preview → confirm → import
@@ -244,6 +246,15 @@ Open [http://localhost:3000](http://localhost:3000).
 5. Review validation errors/warnings and the preview table
 6. Click **Confirm Import**
 
+## Authentication & Multi-Tenancy
+
+Gridiron Franchise uses Clerk for sign-up/sign-in. Every account owns exactly one League (enforced by a
+unique `ownerId` on the `League` model), auto-generated the first time you sign in — 8 fictional teams,
+360 rated players, depth charts, and a scheduled season, ready to play immediately with no setup. Every
+API route and page is scoped to the signed-in user's own league, and looking up another user's game, team,
+or player by ID returns a 404 rather than leaking data. There is no shared "global" league anymore; each
+account's franchise is fully private.
+
 ## Screenshots
 
 _Add screenshots of the home dashboard, team detail, roster upload, matchup, and game recap pages here._
@@ -263,4 +274,3 @@ and branding are invented for demonstration purposes only.
 ## Future Roadmap
 
 - Trade and free agency simulation
-- Authentication so each user manages their own franchise
