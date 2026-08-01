@@ -10,7 +10,9 @@ import { PositionBadge } from "@/components/football/PositionBadge";
 import { PlayerRatingGrid } from "@/components/football/PlayerRatingGrid";
 import { PlayerJersey } from "@/components/football/PlayerJersey";
 import { TeamLogo } from "@/components/football/TeamLogo";
+import { PlayerSeasonStatsTable } from "@/components/football/PlayerSeasonStatsTable";
 import { toRatingMap } from "@/lib/football-mappers";
+import { getPlayerSeasonStats } from "@/lib/stats/player-season-stats";
 import { formatHeight } from "@/lib/utils";
 
 export default async function PlayerDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +28,7 @@ export default async function PlayerDetailPage({ params }: { params: Promise<{ i
   if (!player) notFound();
 
   const ratings = toRatingMap(player.ratings);
+  const { seasons, career } = await getPlayerSeasonStats(player.id);
 
   return (
     <div className="flex flex-col gap-8">
@@ -79,6 +82,8 @@ export default async function PlayerDetailPage({ params }: { params: Promise<{ i
       </Card>
 
       <PlayerRatingGrid position={player.position} ratings={ratings} />
+
+      <PlayerSeasonStatsTable seasons={seasons} career={career} />
     </div>
   );
 }

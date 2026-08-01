@@ -56,6 +56,15 @@ interface AdvanceSummary {
   notableRookies: FranchiseNote[];
 }
 
+interface SeasonAward {
+  category: string;
+  playerId: string;
+  playerName: string;
+  position: string;
+  teamAbbreviation: string;
+  valueLabel: string;
+}
+
 interface SeasonHistoryEntry {
   id: string;
   name: string;
@@ -70,6 +79,7 @@ interface SeasonHistoryEntry {
     record: string;
     source: "playoff" | "record";
   } | null;
+  awards: SeasonAward[];
 }
 
 export default function SeasonPage() {
@@ -360,38 +370,53 @@ export default function SeasonPage() {
         </>
       )}
 
-      {history.length > 1 && (
+      {history.length > 0 && (
         <section>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">Franchise History</p>
           <Card className="divide-y divide-border-line p-0">
             {history.map((h) => (
-              <div key={h.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold text-text-primary">
-                    {h.name} <span className="text-text-faint">({h.year})</span>
-                  </p>
-                  <Badge tone={h.status === "COMPLETED" ? "success" : "neutral"}>{h.status.replace("_", " ")}</Badge>
-                </div>
-                {h.champion ? (
-                  <div className="flex items-center gap-2">
-                    <TeamLogo
-                      seed={h.champion.teamId}
-                      primaryColor={h.champion.primaryColor}
-                      secondaryColor={h.champion.secondaryColor}
-                      abbreviation={h.champion.abbreviation}
-                      size={28}
-                    />
-                    <div className="text-right">
-                      <p className="text-xs text-text-faint">
-                        {h.champion.source === "playoff" ? "🏆 Playoff Champion" : "Best Record"}
-                      </p>
-                      <p className="text-sm font-semibold text-text-primary">
-                        {h.champion.teamName} ({h.champion.record})
-                      </p>
-                    </div>
+              <div key={h.id} className="flex flex-col gap-3 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">
+                      {h.name} <span className="text-text-faint">({h.year})</span>
+                    </p>
+                    <Badge tone={h.status === "COMPLETED" ? "success" : "neutral"}>{h.status.replace("_", " ")}</Badge>
                   </div>
-                ) : (
-                  <p className="text-xs text-text-faint">In progress</p>
+                  {h.champion ? (
+                    <div className="flex items-center gap-2">
+                      <TeamLogo
+                        seed={h.champion.teamId}
+                        primaryColor={h.champion.primaryColor}
+                        secondaryColor={h.champion.secondaryColor}
+                        abbreviation={h.champion.abbreviation}
+                        size={28}
+                      />
+                      <div className="text-right">
+                        <p className="text-xs text-text-faint">
+                          {h.champion.source === "playoff" ? "🏆 Playoff Champion" : "Best Record"}
+                        </p>
+                        <p className="text-sm font-semibold text-text-primary">
+                          {h.champion.teamName} ({h.champion.record})
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-text-faint">In progress</p>
+                  )}
+                </div>
+                {h.awards.length > 0 && (
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {h.awards.map((a) => (
+                      <div key={a.category} className="rounded-lg border border-border-line bg-surface/60 px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-accent">{a.category}</p>
+                        <p className="text-sm font-semibold text-text-primary">{a.playerName}</p>
+                        <p className="text-[11px] text-text-faint">
+                          {a.position} · {a.teamAbbreviation} · {a.valueLabel}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             ))}

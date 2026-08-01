@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
+import { getSeasonAwards } from "@/lib/stats/season-awards";
 
 export async function GET() {
   const { userId } = await auth();
@@ -29,6 +30,14 @@ export async function GET() {
   });
   const championshipBySeason = new Map(championshipGames.map((g) => [g.seasonId, g]));
 
+  const awardsBySeason = new Map(
+    await Promise.all(
+      seasons
+        .filter((s) => s.status === "COMPLETED")
+        .map(async (s) => [s.id, await getSeasonAwards(league.id, s.id)] as const)
+    )
+  );
+
   const history = seasons.map((season) => {
     const championshipGame = championshipBySeason.get(season.id);
 
@@ -51,6 +60,7 @@ export async function GET() {
             : "",
           source: "playoff" as const,
         },
+        awards: awardsBySeason.get(season.id) ?? [],
       };
     }
 
@@ -77,6 +87,7 @@ export async function GET() {
             source: "record" as const,
           }
         : null,
+      awards: awardsBySeason.get(season.id) ?? [],
     };
   });
 

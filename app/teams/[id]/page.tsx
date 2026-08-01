@@ -10,8 +10,10 @@ import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
 import { PositionBadge } from "@/components/football/PositionBadge";
 import { TeamLogo } from "@/components/football/TeamLogo";
 import { DeleteTeamButton } from "@/components/football/DeleteTeamButton";
+import { TeamSeasonHistoryTable } from "@/components/football/TeamSeasonHistoryTable";
 import { calculateTeamStrengths } from "@/lib/simulation/team-ratings";
 import { toRatedPlayer } from "@/lib/football-mappers";
+import { getTeamSeasonRecords } from "@/lib/stats/team-season-record";
 
 export default async function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
@@ -33,6 +35,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
   const ratedPlayers = team.players.map(toRatedPlayer);
   const { strengths, weaknesses } = calculateTeamStrengths(ratedPlayers);
   const topPlayers = team.players.slice(0, 5);
+  const seasonRecords = await getTeamSeasonRecords(team.id);
 
   return (
     <div className="flex flex-col gap-8">
@@ -104,6 +107,8 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
           </ul>
         </Card>
       </section>
+
+      {seasonRecords.length > 0 && <TeamSeasonHistoryTable records={seasonRecords} />}
 
       <section>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">Top Players</p>
