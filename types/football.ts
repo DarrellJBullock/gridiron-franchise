@@ -209,8 +209,10 @@ export interface TeamStrengthReport {
 }
 
 export interface QuarterScores {
-  home: [number, number, number, number];
-  away: [number, number, number, number];
+  // Always length 4 (Q1-Q4). A 5th entry is appended only if the game went
+  // to overtime.
+  home: number[];
+  away: number[];
 }
 
 export interface GameTeamStatLine {

@@ -75,9 +75,11 @@ async function simulateAndPersistPlayoffGame(
   ]);
   if (!homeTeam || !awayTeam) throw new Error("Playoff team not found");
 
-  // Playoff games can't end in a tie. The engine doesn't model overtime, so on
-  // the rare tied result we just re-simulate the game rather than patching the
-  // score after the fact (which would leave the summary text describing a tie
+  // Playoff games can't end in a tie. The engine now plays sudden-death
+  // overtime until someone scores, so a tie here should be virtually
+  // impossible — this retry is just a defensive fallback for the capped
+  // edge case, re-simulating the whole game rather than patching the score
+  // after the fact (which would leave the summary text describing a tie
   // that didn't match the persisted score).
   let result = simulateGame({
     homeTeamName: homeTeam.name,

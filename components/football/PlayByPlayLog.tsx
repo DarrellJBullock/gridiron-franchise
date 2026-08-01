@@ -16,6 +16,10 @@ export interface PlayByPlayRow {
   isTurnover: boolean;
 }
 
+function quarterLabel(quarter: number) {
+  return quarter > 4 ? "OT" : `Q${quarter}`;
+}
+
 function playIcon(playType: string) {
   switch (playType) {
     case "run":
@@ -68,7 +72,7 @@ export function PlayByPlayLog({ plays }: { plays: PlayByPlayRow[] }) {
         {drives.map((drive) => (
           <div key={drive.driveNumber}>
             <div className="mb-2 flex items-center gap-2">
-              <Badge tone="blue">Q{drive.quarter}</Badge>
+              <Badge tone="blue">{quarterLabel(drive.quarter)}</Badge>
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                 Drive {drive.driveNumber} — {drive.offenseAbbr} ball
               </p>

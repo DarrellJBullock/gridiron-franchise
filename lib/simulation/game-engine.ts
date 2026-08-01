@@ -318,6 +318,53 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
     }
   }
 
+  // Sudden-death overtime: teams alternate single drives (home gets the
+  // first possession) and the first score of any kind wins immediately.
+  // Capped well beyond what's statistically plausible to need — every drive
+  // has a real chance to score, so exhausting the cap is not expected to
+  // happen in practice, but the loop still terminates either way.
+  const maxOvertimeDrives = 30;
+  let overtimeDrives = 0;
+  let overtimeWinner: { team: string; points: number } | null = null;
+  if (homeScore === awayScore) {
+    quarterScores.home.push(0);
+    quarterScores.away.push(0);
+  }
+  while (homeScore === awayScore && overtimeDrives < maxOvertimeDrives) {
+    overtimeDrives += 1;
+    const homeStarts = overtimeDrives % 2 === 1;
+    driveNumber += 1;
+
+    const offense = homeStarts ? home : away;
+    const defense = homeStarts ? away : home;
+    const offenseLine = homeStarts ? homeLine : awayLine;
+    const offenseThirdDowns = homeStarts ? homeThirdDowns : awayThirdDowns;
+    const bonus = homeStarts ? homeBonus : 0;
+
+    const result = simulateDrive(offense, defense, 5, driveNumber, bonus, stats, offenseLine, offenseThirdDowns);
+    allPlays.push(...result.plays);
+    const driveSeconds = randomInt(90, 210);
+    if (homeStarts) homePossessionSeconds += driveSeconds;
+    else awayPossessionSeconds += driveSeconds;
+
+    offenseLine.firstDowns += Math.max(1, Math.round(result.yards / 9.5));
+    if (result.turnover) offenseLine.turnovers += 1;
+
+    if (result.points > 0) {
+      if (homeStarts) {
+        homeScore += result.points;
+        quarterScores.home[4] += result.points;
+      } else {
+        awayScore += result.points;
+        quarterScores.away[4] += result.points;
+      }
+      overtimeWinner = { team: offense.name, points: result.points };
+    }
+    if (result.bigPlay) {
+      bigPlays.push({ team: offense.name, quarter: 5, yards: result.yards });
+    }
+  }
+
   homeLine.thirdDownConversions = `${homeThirdDowns.conversions}/${homeThirdDowns.attempts}`;
   awayLine.thirdDownConversions = `${awayThirdDowns.conversions}/${awayThirdDowns.attempts}`;
 
@@ -332,6 +379,7 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
 
   const winner = homeScore === awayScore ? null : homeScore > awayScore ? home.name : away.name;
   const margin = Math.abs(homeScore - awayScore);
+  const wentToOvertime = overtimeDrives > 0;
 
   const summary =
     winner === null
@@ -339,12 +387,16 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
       : `${winner} defeated ${winner === home.name ? away.name : home.name} ${Math.max(
           homeScore,
           awayScore
-        )}-${Math.min(homeScore, awayScore)}${margin <= 3 ? " in a nail-biter" : margin >= 21 ? " in a blowout" : ""}.`;
+        )}-${Math.min(homeScore, awayScore)}${
+          wentToOvertime ? " in overtime" : margin <= 3 ? " in a nail-biter" : margin >= 21 ? " in a blowout" : ""
+        }.`;
 
   const biggestBigPlay = bigPlays.sort((a, b) => b.yards - a.yards)[0];
-  const turningPoint = biggestBigPlay
-    ? `A ${biggestBigPlay.yards}-yard explosive play by ${biggestBigPlay.team} in the Q${biggestBigPlay.quarter} shifted momentum.`
-    : `${biggestSwing.team || home.name} took control with a scoring drive in the Q${biggestSwing.quarter}.`;
+  const turningPoint = overtimeWinner
+    ? `${overtimeWinner.team} won it with a ${overtimeWinner.points}-point drive in sudden-death overtime.`
+    : biggestBigPlay
+      ? `A ${biggestBigPlay.yards}-yard explosive play by ${biggestBigPlay.team} in the Q${biggestBigPlay.quarter} shifted momentum.`
+      : `${biggestSwing.team || home.name} took control with a scoring drive in the Q${biggestSwing.quarter}.`;
 
   const homeRunHeavy = homeLine.rushingYards >= homeLine.passingYards;
   const awayRunHeavy = awayLine.rushingYards >= awayLine.passingYards;

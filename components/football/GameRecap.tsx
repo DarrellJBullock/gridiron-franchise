@@ -35,6 +35,9 @@ export function GameRecap({
   turningPoint,
   playStyleSummary,
 }: GameRecapProps) {
+  const quarterCount = Math.max(homeQuarters.length, awayQuarters.length, 4);
+  const quarterLabels = Array.from({ length: quarterCount }, (_, i) => (i < 4 ? `Q${i + 1}` : "OT"));
+
   return (
     <div className="flex flex-col gap-6">
       <Card className="p-5">
@@ -43,10 +46,11 @@ export function GameRecap({
           <Thead>
             <Tr>
               <Th>Team</Th>
-              <Th className="text-center">Q1</Th>
-              <Th className="text-center">Q2</Th>
-              <Th className="text-center">Q3</Th>
-              <Th className="text-center">Q4</Th>
+              {quarterLabels.map((label) => (
+                <Th key={label} className="text-center">
+                  {label}
+                </Th>
+              ))}
               <Th className="text-center">Final</Th>
             </Tr>
           </Thead>
