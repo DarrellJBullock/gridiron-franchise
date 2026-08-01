@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 
 export async function GET(req: Request) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const league = await getOrCreateUserLeague(userId);
+
   const { searchParams } = new URL(req.url);
   const seasonId = searchParams.get("seasonId");
 
   const season = seasonId
-    ? await prisma.season.findUnique({ where: { id: seasonId } })
-    : await prisma.season.findFirst({ orderBy: { createdAt: "desc" } });
+    ? await prisma.season.findFirst({ where: { id: seasonId, leagueId: league.id } })
+    : await prisma.season.findFirst({ where: { leagueId: league.id }, orderBy: { createdAt: "desc" } });
 
   if (!season) {
     return NextResponse.json({ season: null, standings: [] });

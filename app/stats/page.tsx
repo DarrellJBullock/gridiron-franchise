@@ -1,10 +1,17 @@
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 import { getStatLeaders } from "@/lib/stats/leaders";
 import { StatLeaderTable } from "@/components/football/StatLeaderTable";
 
 export const dynamic = "force-dynamic";
 
 export default async function StatsPage() {
-  const leaders = await getStatLeaders();
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+  const league = await getOrCreateUserLeague(userId);
+
+  const leaders = await getStatLeaders(league.id);
 
   return (
     <div className="flex flex-col gap-6">

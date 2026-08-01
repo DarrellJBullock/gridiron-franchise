@@ -2,9 +2,10 @@ import { prisma } from "@/lib/prisma";
 
 const TOP_N = 10;
 
-export async function getStatLeaders() {
+export async function getStatLeaders(leagueId: string) {
   const grouped = await prisma.gamePlayerStats.groupBy({
     by: ["playerId"],
+    where: { player: { team: { leagueId } } },
     _sum: {
       passingYards: true,
       passingTouchdowns: true,

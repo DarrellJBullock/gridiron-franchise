@@ -1,15 +1,27 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 
 export async function GET() {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const league = await getOrCreateUserLeague(userId);
+
   const teams = await prisma.team.findMany({
+    where: { leagueId: league.id },
     include: {
       _count: { select: { players: { where: { retired: false } } } },
     },
     orderBy: { overallRating: "desc" },
   });
 
-  const latestSeason = await prisma.season.findFirst({ orderBy: { createdAt: "desc" } });
+  const latestSeason = await prisma.season.findFirst({
+    where: { leagueId: league.id },
+    orderBy: { createdAt: "desc" },
+  });
   const standings = latestSeason
     ? await prisma.standing.findMany({ where: { seasonId: latestSeason.id } })
     : [];

@@ -1,5 +1,7 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 import { Card } from "@/components/ui/Card";
 import { RatingBadge } from "@/components/ui/RatingBadge";
 import { Badge } from "@/components/ui/Badge";
@@ -11,15 +13,18 @@ import { calculateTeamStrengths } from "@/lib/simulation/team-ratings";
 import { toRatedPlayer } from "@/lib/football-mappers";
 
 export default async function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+  const league = await getOrCreateUserLeague(userId);
   const { id } = await params;
 
-  const team = await prisma.team.findUnique({
-    where: { id },
+  const team = await prisma.team.findFirst({
+    where: { id, leagueId: league.id },
     include: { players: { where: { retired: false }, orderBy: { overall: "desc" } } },
   });
   if (!team) notFound();
 
-  const latestSeason = await prisma.season.findFirst({ orderBy: { createdAt: "desc" } });
+  const latestSeason = await prisma.season.findFirst({ where: { leagueId: league.id }, orderBy: { createdAt: "desc" } });
   const standing = latestSeason
     ? await prisma.standing.findUnique({ where: { seasonId_teamId: { seasonId: latestSeason.id, teamId: team.id } } })
     : null;

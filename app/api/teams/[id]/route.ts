@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 import { calculateTeamStrengths } from "@/lib/simulation/team-ratings";
 import { toRatedPlayer } from "@/lib/football-mappers";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const league = await getOrCreateUserLeague(userId);
   const { id } = await params;
 
-  const team = await prisma.team.findUnique({
-    where: { id },
+  const team = await prisma.team.findFirst({
+    where: { id, leagueId: league.id },
     include: {
       players: { where: { retired: false }, orderBy: { overall: "desc" } },
       depthCharts: {
@@ -23,7 +30,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const ratedPlayers = team.players.map(toRatedPlayer);
   const strengths = calculateTeamStrengths(ratedPlayers);
 
-  const latestSeason = await prisma.season.findFirst({ orderBy: { createdAt: "desc" } });
+  const latestSeason = await prisma.season.findFirst({
+    where: { leagueId: league.id },
+    orderBy: { createdAt: "desc" },
+  });
   const standing = latestSeason
     ? await prisma.standing.findUnique({
         where: { seasonId_teamId: { seasonId: latestSeason.id, teamId: team.id } },

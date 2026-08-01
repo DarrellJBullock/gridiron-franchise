@@ -1,6 +1,8 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { RatingBadge } from "@/components/ui/RatingBadge";
@@ -12,10 +14,13 @@ import { toRatingMap } from "@/lib/football-mappers";
 import { formatHeight } from "@/lib/utils";
 
 export default async function PlayerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+  const league = await getOrCreateUserLeague(userId);
   const { id } = await params;
 
-  const player = await prisma.player.findUnique({
-    where: { id },
+  const player = await prisma.player.findFirst({
+    where: { id, team: { leagueId: league.id } },
     include: { ratings: true, team: true },
   });
   if (!player) notFound();

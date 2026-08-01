@@ -1,4 +1,7 @@
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 import { LinkButton } from "@/components/ui/Button";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { TeamCard } from "@/components/football/TeamCard";
@@ -8,17 +11,22 @@ import { EmptyState } from "@/components/ui/EmptyState";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+  const league = await getOrCreateUserLeague(userId);
+
   const [teamCount, playerCount, gameCount, topTeams, recentGames] = await Promise.all([
-    prisma.team.count(),
-    prisma.player.count({ where: { retired: false } }),
-    prisma.game.count({ where: { status: "FINAL" } }),
+    prisma.team.count({ where: { leagueId: league.id } }),
+    prisma.player.count({ where: { retired: false, team: { leagueId: league.id } } }),
+    prisma.game.count({ where: { status: "FINAL", homeTeam: { leagueId: league.id } } }),
     prisma.team.findMany({
+      where: { leagueId: league.id },
       orderBy: { overallRating: "desc" },
       take: 4,
       include: { _count: { select: { players: { where: { retired: false } } } } },
     }),
     prisma.game.findMany({
-      where: { status: "FINAL" },
+      where: { status: "FINAL", homeTeam: { leagueId: league.id } },
       orderBy: { updatedAt: "desc" },
       take: 3,
       include: { homeTeam: true, awayTeam: true },

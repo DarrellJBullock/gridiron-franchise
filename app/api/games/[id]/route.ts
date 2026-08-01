@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const league = await getOrCreateUserLeague(userId);
   const { id } = await params;
 
-  const game = await prisma.game.findUnique({
-    where: { id },
+  const game = await prisma.game.findFirst({
+    where: { id, homeTeam: { leagueId: league.id } },
     include: {
       homeTeam: true,
       awayTeam: true,

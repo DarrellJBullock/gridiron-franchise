@@ -1,5 +1,7 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 import { Scoreboard } from "@/components/football/Scoreboard";
 import { GameRecap } from "@/components/football/GameRecap";
 import { PlayByPlayLog } from "@/components/football/PlayByPlayLog";
@@ -8,10 +10,13 @@ import { selectTopPerformers } from "@/lib/simulation/player-stats";
 import type { GamePlayerStatLine } from "@/types/football";
 
 export default async function GameDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+  const league = await getOrCreateUserLeague(userId);
   const { id } = await params;
 
-  const game = await prisma.game.findUnique({
-    where: { id },
+  const game = await prisma.game.findFirst({
+    where: { id, homeTeam: { leagueId: league.id } },
     include: {
       homeTeam: true,
       awayTeam: true,

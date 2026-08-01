@@ -1,4 +1,7 @@
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 import { Card } from "@/components/ui/Card";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { LinkButton } from "@/components/ui/Button";
@@ -9,13 +12,16 @@ import { EmptyState } from "@/components/ui/EmptyState";
 export const dynamic = "force-dynamic";
 
 export default async function LeaguePage() {
-  const league = await prisma.league.findFirst({ orderBy: { createdAt: "asc" } });
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+  const league = await getOrCreateUserLeague(userId);
+
   const teams = await prisma.team.findMany({
-    where: league ? { leagueId: league.id } : undefined,
+    where: { leagueId: league.id },
     orderBy: { overallRating: "desc" },
     include: { _count: { select: { players: { where: { retired: false } } } } },
   });
-  const season = await prisma.season.findFirst({ orderBy: { createdAt: "desc" } });
+  const season = await prisma.season.findFirst({ where: { leagueId: league.id }, orderBy: { createdAt: "desc" } });
   const standings = season
     ? await prisma.standing.findMany({ where: { seasonId: season.id }, include: { team: true } })
     : [];
