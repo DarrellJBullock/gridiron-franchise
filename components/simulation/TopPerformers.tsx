@@ -12,7 +12,8 @@ function statLine(line: GamePlayerStatLine): string {
   if (line.receivingTouchdowns) parts.push(`${line.receivingTouchdowns} rec TD`);
   if (line.tackles) parts.push(`${line.tackles} tackles`);
   if (line.sacks) parts.push(`${line.sacks} sacks`);
-  if (line.interceptions) parts.push(`${line.interceptions} INT`);
+  if (line.interceptionsMade) parts.push(`${line.interceptionsMade} INT`);
+  if (line.interceptions) parts.push(`${line.interceptions} INT thrown`);
   if (line.fieldGoalsMade) parts.push(`${line.fieldGoalsMade} FG made`);
   return parts.join(", ") || "No notable stats";
 }

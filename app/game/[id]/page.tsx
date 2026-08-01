@@ -32,6 +32,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
     passingYards: s.passingYards,
     passingTouchdowns: s.passingTouchdowns,
     interceptions: s.interceptions,
+    interceptionsMade: s.interceptionsMade,
     rushingYards: s.rushingYards,
     rushingTouchdowns: s.rushingTouchdowns,
     receivingYards: s.receivingYards,

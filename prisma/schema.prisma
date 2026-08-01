@@ -267,6 +267,7 @@ model GamePlayerStats {
   passingYards         Int    @default(0)
   passingTouchdowns    Int    @default(0)
   interceptions        Int    @default(0)
+  interceptionsMade    Int    @default(0)
   rushingYards         Int    @default(0)
   rushingTouchdowns    Int    @default(0)
   receivingYards       Int    @default(0)

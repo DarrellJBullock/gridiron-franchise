@@ -15,12 +15,24 @@ export async function getStatLeaders() {
       tackles: true,
       sacks: true,
       forcedFumbles: true,
+      interceptionsMade: true,
       fieldGoalsMade: true,
     },
   });
 
   if (grouped.length === 0) {
-    return { passing: [], rushing: [], receiving: [], defense: [], kicking: [] };
+    return {
+      passing: [],
+      rushing: [],
+      receiving: [],
+      defense: [],
+      kicking: [],
+      sacks: [],
+      interceptions: [],
+      points: [],
+      rushingTouchdowns: [],
+      receivingTouchdowns: [],
+    };
   }
 
   const players = await prisma.player.findMany({
@@ -55,5 +67,12 @@ export async function getStatLeaders() {
     receiving: topBy((g) => g._sum.receivingYards ?? 0),
     defense: topBy((g) => (g._sum.tackles ?? 0) + (g._sum.sacks ?? 0) * 2 + (g._sum.forcedFumbles ?? 0) * 3),
     kicking: topBy((g) => g._sum.fieldGoalsMade ?? 0),
+    sacks: topBy((g) => g._sum.sacks ?? 0),
+    interceptions: topBy((g) => g._sum.interceptionsMade ?? 0),
+    // Points only counts scores the player personally crossed the goal line or kicked for —
+    // passing touchdowns aren't included since the passer didn't score.
+    points: topBy((g) => (g._sum.rushingTouchdowns ?? 0) * 6 + (g._sum.receivingTouchdowns ?? 0) * 6 + (g._sum.fieldGoalsMade ?? 0) * 3),
+    rushingTouchdowns: topBy((g) => g._sum.rushingTouchdowns ?? 0),
+    receivingTouchdowns: topBy((g) => g._sum.receivingTouchdowns ?? 0),
   };
 }

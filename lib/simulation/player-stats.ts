@@ -64,6 +64,11 @@ export class PlayerStatAccumulator {
     line.forcedFumbles = (line.forcedFumbles ?? 0) + 1;
   }
 
+  addInterceptionMade(player: RatedPlayer) {
+    const line = this.get(player);
+    line.interceptionsMade = (line.interceptionsMade ?? 0) + 1;
+  }
+
   addFieldGoal(player: RatedPlayer) {
     const line = this.get(player);
     line.fieldGoalsMade = (line.fieldGoalsMade ?? 0) + 1;
@@ -85,6 +90,7 @@ function performanceScore(line: GamePlayerStatLine): number {
     (line.tackles ?? 0) * 1 +
     (line.sacks ?? 0) * 2 +
     (line.forcedFumbles ?? 0) * 3 +
+    (line.interceptionsMade ?? 0) * 4 +
     (line.fieldGoalsMade ?? 0) * 3 -
     (line.interceptions ?? 0) * 2
   );

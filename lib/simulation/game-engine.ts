@@ -109,10 +109,13 @@ function simulateDrive(
     const isInterception = Math.random() < 0.55 && offense.qb;
     if (isInterception && offense.qb) {
       stats.addPassing(offense.qb, yards, false, true);
-    }
-    const defender = pickWeighted(defense.defenders);
-    if (defender && !isInterception) {
-      stats.addForcedFumble(defender);
+      // Interceptions are mostly made by defensive backs, occasionally a linebacker.
+      const defensiveBacks = defense.defenders.filter((d) => d.position === "CB" || d.position === "FS" || d.position === "SS");
+      const interceptor = pickWeighted(defensiveBacks.length > 0 ? defensiveBacks : defense.defenders);
+      if (interceptor) stats.addInterceptionMade(interceptor);
+    } else {
+      const defender = pickWeighted(defense.defenders);
+      if (defender) stats.addForcedFumble(defender);
     }
     const plays = generateDrivePlays({
       quarter,
@@ -159,7 +162,12 @@ function simulateDrive(
     const tdChance = clamp(0.5 + diff * 0.0055, 0.22, 0.85);
     if (Math.random() < tdChance) {
       points = 7;
-      scoredOnGround = runRatio > 0.5 || !receiver;
+      // Which play scored isn't the same question as which type of yardage dominated the
+      // drive as a whole (a drive can be mostly passing yards and still end on a short
+      // rushing score at the goal line), so this is an independent roll nudged by how
+      // run-heavy the offense leans, not a hard cutoff on the drive's run/pass split.
+      const rushTdChance = clamp(0.35 + (runRatio - 0.42) * 0.6, 0.2, 0.6);
+      scoredOnGround = !receiver || Math.random() < rushTdChance;
       outcome = "touchdown";
     } else {
       const kickerRating = offense.kicker?.overall ?? 55;

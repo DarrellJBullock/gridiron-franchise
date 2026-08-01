@@ -18,7 +18,12 @@ export default async function StatsPage() {
         <StatLeaderTable title="Passing Leaders" unit="Yards" rows={leaders.passing} />
         <StatLeaderTable title="Rushing Leaders" unit="Yards" rows={leaders.rushing} />
         <StatLeaderTable title="Receiving Leaders" unit="Yards" rows={leaders.receiving} />
+        <StatLeaderTable title="Rushing TD Leaders" unit="Rush TDs" rows={leaders.rushingTouchdowns} />
+        <StatLeaderTable title="Receiving TD Leaders" unit="Rec TDs" rows={leaders.receivingTouchdowns} />
+        <StatLeaderTable title="Points Leaders" unit="Points" rows={leaders.points} />
         <StatLeaderTable title="Defensive Leaders" unit="Impact Score" rows={leaders.defense} />
+        <StatLeaderTable title="Sack Leaders" unit="Sacks" rows={leaders.sacks} />
+        <StatLeaderTable title="Interception Leaders" unit="INTs" rows={leaders.interceptions} />
         <StatLeaderTable title="Kicking Leaders" unit="FG Made" rows={leaders.kicking} />
       </div>
     </div>

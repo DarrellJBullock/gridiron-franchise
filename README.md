@@ -45,7 +45,7 @@ cohesive sports-broadcast-style dashboard UI — all original IP so it's safe to
 - Full season creation with a round-robin schedule, week-by-week or full-season simulation, and live standings
 - Optional 4-team single-elimination playoff bracket, seeded by regular-season record
 - Multi-season franchise mode: advance to the next year and every player ages, ratings drift up or down based on age, some retire, and rookies are drafted in to backfill — with a franchise history view showing each season's champion
-- League-wide stat leaderboards (passing, rushing, receiving, defense, kicking)
+- League-wide stat leaderboards: passing, rushing, receiving, rushing/receiving touchdowns, points, defensive impact, sacks, interceptions, and kicking
 - Procedurally generated team logos and player jerseys — deterministic SVGs built from each team's own colors, no external images or generation services
 - Dark, responsive, mobile-first "football operations command center" UI
 

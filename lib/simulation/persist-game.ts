@@ -56,6 +56,7 @@ export async function persistSimulatedGame({
         passingYards: line.passingYards ?? 0,
         passingTouchdowns: line.passingTouchdowns ?? 0,
         interceptions: line.interceptions ?? 0,
+        interceptionsMade: line.interceptionsMade ?? 0,
         rushingYards: line.rushingYards ?? 0,
         rushingTouchdowns: line.rushingTouchdowns ?? 0,
         receivingYards: line.receivingYards ?? 0,
