@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { TeamLogo } from "./TeamLogo";
-import type { PlayoffMatchup } from "@/lib/simulation/playoffs";
+import type { ConferenceBracket, PlayoffMatchup } from "@/lib/simulation/playoffs";
 
 function MatchupRow({ matchup }: { matchup: PlayoffMatchup }) {
   const content = (
@@ -38,18 +38,50 @@ function MatchupRow({ matchup }: { matchup: PlayoffMatchup }) {
   return matchup.status === "FINAL" ? <Link href={`/game/${matchup.gameId}`}>{content}</Link> : content;
 }
 
+function ConferencePanel({ bracket }: { bracket: ConferenceBracket }) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-accent-blue">{bracket.conference}</p>
+      {bracket.semifinals.length === 0 ? (
+        <p className="text-xs text-text-faint">Not enough teams to seed this conference.</p>
+      ) : (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {bracket.semifinals.map((matchup, i) => (
+              <div key={i}>
+                <Badge tone="blue" className="mb-1.5">
+                  Semifinal
+                </Badge>
+                <MatchupRow matchup={matchup} />
+              </div>
+            ))}
+          </div>
+          {bracket.championship && (
+            <div className="mt-3">
+              <Badge tone="accent" className="mb-1.5">
+                Conference Championship
+              </Badge>
+              <MatchupRow matchup={bracket.championship} />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function PlayoffBracket({
-  semifinals,
-  championship,
+  conferences,
+  leagueChampionship,
 }: {
-  semifinals: PlayoffMatchup[];
-  championship: PlayoffMatchup | null;
+  conferences: ConferenceBracket[];
+  leagueChampionship: PlayoffMatchup | null;
 }) {
   const champion =
-    championship?.status === "FINAL"
-      ? championship.winnerTeamId === championship.home.teamId
-        ? championship.home
-        : championship.away
+    leagueChampionship?.status === "FINAL"
+      ? leagueChampionship.winnerTeamId === leagueChampionship.home.teamId
+        ? leagueChampionship.home
+        : leagueChampionship.away
       : null;
 
   return (
@@ -65,31 +97,22 @@ export function PlayoffBracket({
             abbreviation={champion.abbreviation}
             size={36}
           />
-          <p className="text-sm font-bold text-accent">🏆 {champion.name} wins the championship!</p>
+          <p className="text-sm font-bold text-accent">🏆 {champion.name} wins the League Championship!</p>
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <Badge tone="blue" className="mb-2">
-            Semifinal
-          </Badge>
-          <MatchupRow matchup={semifinals[0]} />
-        </div>
-        <div>
-          <Badge tone="blue" className="mb-2">
-            Semifinal
-          </Badge>
-          <MatchupRow matchup={semifinals[1]} />
-        </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {conferences.map((bracket) => (
+          <ConferencePanel key={bracket.conference} bracket={bracket} />
+        ))}
       </div>
 
-      {championship && (
-        <div className="mt-4">
-          <Badge tone="accent" className="mb-2">
-            Championship
+      {leagueChampionship && (
+        <div className="mt-5 border-t border-border-line pt-4">
+          <Badge tone="accent" className="mb-1.5">
+            League Championship
           </Badge>
-          <MatchupRow matchup={championship} />
+          <MatchupRow matchup={leagueChampionship} />
         </div>
       )}
     </Card>

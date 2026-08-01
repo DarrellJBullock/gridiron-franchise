@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
+import { CONFERENCE_DIVISIONS } from "@/lib/league/provision-league";
 import { parseRosterFile } from "@/lib/roster/parser";
 import { validateRosterRows, type ValidRosterRow } from "@/lib/roster/validator";
 import { calculateTeamRatings, type RatedPlayer } from "@/lib/simulation/team-ratings";
@@ -95,6 +96,10 @@ export async function POST(req: Request) {
           },
         });
       } else {
+        // Spread new teams across divisions round-robin so an uploaded
+        // roster doesn't just pile onto one default division.
+        const existingTeamCount = await prisma.team.count({ where: { leagueId: league.id } });
+        const { conference, division } = CONFERENCE_DIVISIONS[existingTeamCount % CONFERENCE_DIVISIONS.length];
         team = await prisma.team.create({
           data: {
             leagueId: league.id,
@@ -102,6 +107,8 @@ export async function POST(req: Request) {
             abbreviation,
             city: first.teamCity || "Unknown",
             state: first.teamState || "",
+            conference,
+            division,
             primaryColor: first.teamPrimaryColor || "#0EA5E9",
             secondaryColor: first.teamSecondaryColor || "#0F172A",
           },

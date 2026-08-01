@@ -17,33 +17,45 @@ interface TeamTemplate {
   abbreviation: string;
   city: string;
   state: string;
+  conference: string;
+  division: string;
   primaryColor: string;
   secondaryColor: string;
   quality: number;
 }
 
+const EAST = "Eastern Conference";
+const WEST = "Western Conference";
+
 // Round-robin games-per-team = (team count) - 1, so a clean N-team league
 // (no bye weeks) needs an even team count. 18 teams -> a 17-game season.
+// 2 conferences x 3 divisions x 3 teams, "like the NFL" but scaled down —
+// playoffs seed division winners + one wildcard per conference (4 teams).
 export const TEAM_TEMPLATES: TeamTemplate[] = [
-  { name: "Delaware Storm", abbreviation: "DLS", city: "Wilmington", state: "DE", primaryColor: "#0EA5E9", secondaryColor: "#0F172A", quality: 78 },
-  { name: "Jersey Iron", abbreviation: "JYI", city: "Trenton", state: "NJ", primaryColor: "#94A3B8", secondaryColor: "#1E293B", quality: 74 },
-  { name: "Atlanta Firebirds", abbreviation: "ATF", city: "Atlanta", state: "GA", primaryColor: "#F97316", secondaryColor: "#7C2D12", quality: 82 },
-  { name: "Orlando Rockets", abbreviation: "ORR", city: "Orlando", state: "FL", primaryColor: "#6366F1", secondaryColor: "#1E1B4B", quality: 80 },
-  { name: "Chicago Frost", abbreviation: "CHF", city: "Chicago", state: "IL", primaryColor: "#38BDF8", secondaryColor: "#0C4A6E", quality: 76 },
-  { name: "Seattle Voltage", abbreviation: "SEV", city: "Seattle", state: "WA", primaryColor: "#22C55E", secondaryColor: "#052E16", quality: 79 },
-  { name: "Houston Copperheads", abbreviation: "HOC", city: "Houston", state: "TX", primaryColor: "#B45309", secondaryColor: "#1C1917", quality: 77 },
-  { name: "Philadelphia Founders", abbreviation: "PHF", city: "Philadelphia", state: "PA", primaryColor: "#EF4444", secondaryColor: "#1E293B", quality: 81 },
-  { name: "Denver Blaze", abbreviation: "DNB", city: "Denver", state: "CO", primaryColor: "#DC2626", secondaryColor: "#1C1917", quality: 80 },
-  { name: "Phoenix Vipers", abbreviation: "PXV", city: "Phoenix", state: "AZ", primaryColor: "#EA580C", secondaryColor: "#422006", quality: 75 },
-  { name: "Nashville Ironclads", abbreviation: "NVI", city: "Nashville", state: "TN", primaryColor: "#78716C", secondaryColor: "#1C1917", quality: 78 },
-  { name: "Portland Cascade", abbreviation: "POR", city: "Portland", state: "OR", primaryColor: "#16A34A", secondaryColor: "#052E16", quality: 77 },
-  { name: "Austin Renegades", abbreviation: "AUR", city: "Austin", state: "TX", primaryColor: "#F59E0B", secondaryColor: "#451A03", quality: 81 },
-  { name: "Charlotte Sentinels", abbreviation: "CLS", city: "Charlotte", state: "NC", primaryColor: "#2563EB", secondaryColor: "#0F172A", quality: 76 },
-  { name: "Detroit Forge", abbreviation: "DET", city: "Detroit", state: "MI", primaryColor: "#EA580C", secondaryColor: "#1C1917", quality: 79 },
-  { name: "Minneapolis Blizzard", abbreviation: "MPB", city: "Minneapolis", state: "MN", primaryColor: "#0EA5E9", secondaryColor: "#0C4A6E", quality: 74 },
-  { name: "Sacramento Miners", abbreviation: "SAM", city: "Sacramento", state: "CA", primaryColor: "#CA8A04", secondaryColor: "#422006", quality: 83 },
-  { name: "Providence Privateers", abbreviation: "PRP", city: "Providence", state: "RI", primaryColor: "#7C3AED", secondaryColor: "#1E1B4B", quality: 78 },
+  { name: "Delaware Storm", abbreviation: "DLS", city: "Wilmington", state: "DE", conference: EAST, division: "Atlantic", primaryColor: "#0EA5E9", secondaryColor: "#0F172A", quality: 78 },
+  { name: "Jersey Iron", abbreviation: "JYI", city: "Trenton", state: "NJ", conference: EAST, division: "Atlantic", primaryColor: "#94A3B8", secondaryColor: "#1E293B", quality: 74 },
+  { name: "Philadelphia Founders", abbreviation: "PHF", city: "Philadelphia", state: "PA", conference: EAST, division: "Atlantic", primaryColor: "#EF4444", secondaryColor: "#1E293B", quality: 81 },
+  { name: "Atlanta Firebirds", abbreviation: "ATF", city: "Atlanta", state: "GA", conference: EAST, division: "Southeast", primaryColor: "#F97316", secondaryColor: "#7C2D12", quality: 82 },
+  { name: "Orlando Rockets", abbreviation: "ORR", city: "Orlando", state: "FL", conference: EAST, division: "Southeast", primaryColor: "#6366F1", secondaryColor: "#1E1B4B", quality: 80 },
+  { name: "Charlotte Sentinels", abbreviation: "CLS", city: "Charlotte", state: "NC", conference: EAST, division: "Southeast", primaryColor: "#2563EB", secondaryColor: "#0F172A", quality: 76 },
+  { name: "Chicago Frost", abbreviation: "CHF", city: "Chicago", state: "IL", conference: EAST, division: "North", primaryColor: "#38BDF8", secondaryColor: "#0C4A6E", quality: 76 },
+  { name: "Detroit Forge", abbreviation: "DET", city: "Detroit", state: "MI", conference: EAST, division: "North", primaryColor: "#EA580C", secondaryColor: "#1C1917", quality: 79 },
+  { name: "Providence Privateers", abbreviation: "PRP", city: "Providence", state: "RI", conference: EAST, division: "North", primaryColor: "#7C3AED", secondaryColor: "#1E1B4B", quality: 78 },
+  { name: "Seattle Voltage", abbreviation: "SEV", city: "Seattle", state: "WA", conference: WEST, division: "Pacific", primaryColor: "#22C55E", secondaryColor: "#052E16", quality: 79 },
+  { name: "Portland Cascade", abbreviation: "POR", city: "Portland", state: "OR", conference: WEST, division: "Pacific", primaryColor: "#16A34A", secondaryColor: "#052E16", quality: 77 },
+  { name: "Sacramento Miners", abbreviation: "SAM", city: "Sacramento", state: "CA", conference: WEST, division: "Pacific", primaryColor: "#CA8A04", secondaryColor: "#422006", quality: 83 },
+  { name: "Houston Copperheads", abbreviation: "HOC", city: "Houston", state: "TX", conference: WEST, division: "Southwest", primaryColor: "#B45309", secondaryColor: "#1C1917", quality: 77 },
+  { name: "Austin Renegades", abbreviation: "AUR", city: "Austin", state: "TX", conference: WEST, division: "Southwest", primaryColor: "#F59E0B", secondaryColor: "#451A03", quality: 81 },
+  { name: "Phoenix Vipers", abbreviation: "PXV", city: "Phoenix", state: "AZ", conference: WEST, division: "Southwest", primaryColor: "#EA580C", secondaryColor: "#422006", quality: 75 },
+  { name: "Denver Blaze", abbreviation: "DNB", city: "Denver", state: "CO", conference: WEST, division: "Mountain", primaryColor: "#DC2626", secondaryColor: "#1C1917", quality: 80 },
+  { name: "Minneapolis Blizzard", abbreviation: "MPB", city: "Minneapolis", state: "MN", conference: WEST, division: "Mountain", primaryColor: "#0EA5E9", secondaryColor: "#0C4A6E", quality: 74 },
+  { name: "Nashville Ironclads", abbreviation: "NVI", city: "Nashville", state: "TN", conference: WEST, division: "Mountain", primaryColor: "#78716C", secondaryColor: "#1C1917", quality: 78 },
 ];
+
+/** The 6 conference/division combinations, in template order — for assigning a division to a team outside the fixed 18 (e.g. one created via roster upload). */
+export const CONFERENCE_DIVISIONS: { conference: string; division: string }[] = Array.from(
+  new Map(TEAM_TEMPLATES.map((t) => [`${t.conference}::${t.division}`, { conference: t.conference, division: t.division }])).values()
+);
 
 interface GeneratedTeamData {
   playerRows: {
@@ -185,6 +197,8 @@ export async function provisionLeagueForOwner(ownerId: string, client: PrismaCli
         abbreviation: t.abbreviation,
         city: t.city,
         state: t.state,
+        conference: t.conference,
+        division: t.division,
         primaryColor: t.primaryColor,
         secondaryColor: t.secondaryColor,
       }));
@@ -235,7 +249,7 @@ export async function provisionLeagueForOwner(ownerId: string, client: PrismaCli
           standings: {
             create: teamRows.map((t) => ({
               teamId: t.id,
-              division: t.state === "DE" || t.state === "NJ" || t.state === "PA" ? "Atlantic" : "Frontier",
+              division: t.division,
             })),
           },
           games: {
@@ -271,6 +285,8 @@ export async function addTeamsToLeague(leagueId: string, templates: TeamTemplate
         abbreviation: t.abbreviation,
         city: t.city,
         state: t.state,
+        conference: t.conference,
+        division: t.division,
         primaryColor: t.primaryColor,
         secondaryColor: t.secondaryColor,
       }));

@@ -235,9 +235,9 @@ export default function SeasonPage() {
         <p className="text-xs font-bold uppercase tracking-widest text-accent">Gameday</p>
         <h1 className="text-2xl font-black text-text-primary">Season</h1>
         <p className="mt-1 text-sm text-text-muted">
-          Create a season, generate a schedule, simulate week by week or all at once, optionally run a
-          4-team playoff bracket, then advance the franchise into the next year with player progression
-          and retirement.
+          Create a season, generate a schedule, simulate week by week or all at once, optionally run an
+          8-team playoff bracket (3 division winners plus a wildcard per conference), then advance the
+          franchise into the next year with player progression and retirement.
         </p>
       </div>
 
@@ -310,7 +310,7 @@ export default function SeasonPage() {
                 <Button onClick={handleSimulateFull} disabled={busy || season.status === "COMPLETED"}>
                   {busy ? "Simulating…" : "⏭ Simulate Full Season"}
                 </Button>
-                {season.status === "COMPLETED" && !bracket?.championship?.status && (
+                {season.status === "COMPLETED" && !bracket?.leagueChampionship?.status && (
                   <Button variant="secondary" onClick={handleSimulatePlayoffs} disabled={busy} className="border-accent-blue/50">
                     {busy ? "Running…" : "🏈 Run Playoffs"}
                   </Button>
@@ -343,7 +343,7 @@ export default function SeasonPage() {
           </div>
 
           {bracket && (
-            <PlayoffBracket semifinals={bracket.semifinals} championship={bracket.championship} />
+            <PlayoffBracket conferences={bracket.conferences} leagueChampionship={bracket.leagueChampionship} />
           )}
 
           {regularSeasonGames.filter((g) => g.status === "FINAL").length > 0 && (

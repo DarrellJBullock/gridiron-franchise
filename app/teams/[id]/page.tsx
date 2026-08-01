@@ -64,6 +64,9 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
                   </span>
                 )}
               </p>
+              <p className="mt-0.5 text-xs text-text-faint">
+                {team.conference} · {team.division} Division
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">

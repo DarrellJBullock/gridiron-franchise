@@ -3,26 +3,31 @@ import { simulateGame } from "./game-engine";
 import { persistSimulatedGame } from "./persist-game";
 import { toRatedPlayer } from "@/lib/football-mappers";
 
-// A top-4, single-elimination playoff bracket seeded by regular-season record.
-// The league's two divisions are uneven in size (3 vs 5 teams), so seeding is
-// done across the whole league rather than per-division. This is entirely
-// optional: a season can be advanced into the next year with or without ever
-// running its playoffs, in which case the franchise history falls back to the
-// best regular-season record as the season's "champion."
+// "Like the NFL", scaled to this league's 2 conferences x 3 divisions: each
+// conference sends its 3 division winners plus the best remaining team (a
+// wildcard) into a 4-team bracket. Conference semifinals -> conference
+// championship -> the two conference champions play a League Championship.
 
 export interface PlayoffSeedTeam {
-  seed: number;
+  seed: number; // 1-4 within its conference
+  conference: string;
+  division: string;
   teamId: string;
   name: string;
   abbreviation: string;
   primaryColor: string;
   secondaryColor: string;
   record: string;
+  winPct: number;
+  pointsFor: number;
 }
+
+export type PlayoffRound = "Conference Semifinal" | "Conference Championship" | "League Championship";
 
 export interface PlayoffMatchup {
   gameId: string;
-  round: "Semifinal" | "Championship";
+  round: PlayoffRound;
+  conference: string | null; // null for the League Championship (cross-conference)
   status: string;
   home: PlayoffSeedTeam;
   away: PlayoffSeedTeam;
@@ -31,34 +36,63 @@ export interface PlayoffMatchup {
   winnerTeamId: string | null;
 }
 
-export interface PlayoffBracketResult {
-  seasonId: string;
+export interface ConferenceBracket {
+  conference: string;
   seeds: PlayoffSeedTeam[];
   semifinals: PlayoffMatchup[];
   championship: PlayoffMatchup | null;
+}
+
+export interface PlayoffBracketResult {
+  seasonId: string;
+  conferences: ConferenceBracket[];
+  leagueChampionship: PlayoffMatchup | null;
   championTeamId: string | null;
 }
 
-async function getSeeds(seasonId: string): Promise<PlayoffSeedTeam[]> {
+function winPct(s: { wins: number; losses: number; ties: number }) {
+  return s.wins / Math.max(1, s.wins + s.losses + s.ties);
+}
+
+function byRecord<T extends { wins: number; losses: number; ties: number; pointsFor: number }>(a: T, b: T) {
+  return winPct(b) - winPct(a) || b.pointsFor - a.pointsFor;
+}
+
+async function getConferenceSeeds(seasonId: string, conference: string): Promise<PlayoffSeedTeam[]> {
   const standings = await prisma.standing.findMany({
-    where: { seasonId },
+    where: { seasonId, team: { conference } },
     include: { team: true },
   });
 
-  const ranked = [...standings].sort((a, b) => {
-    const winPctA = a.wins / Math.max(1, a.wins + a.losses + a.ties);
-    const winPctB = b.wins / Math.max(1, b.wins + b.losses + b.ties);
-    return winPctB - winPctA || b.pointsFor - a.pointsFor;
-  });
+  const byDivision = new Map<string, typeof standings>();
+  for (const s of standings) {
+    const list = byDivision.get(s.team.division) ?? [];
+    list.push(s);
+    byDivision.set(s.team.division, list);
+  }
 
-  return ranked.slice(0, 4).map((s, i) => ({
+  const divisionWinners = Array.from(byDivision.values())
+    .map((teams) => [...teams].sort(byRecord)[0])
+    .filter((s): s is (typeof standings)[number] => s !== undefined)
+    .sort(byRecord);
+
+  const winnerIds = new Set(divisionWinners.map((s) => s.teamId));
+  const wildcard = standings.filter((s) => !winnerIds.has(s.teamId)).sort(byRecord)[0];
+
+  const seeded = wildcard ? [...divisionWinners, wildcard] : divisionWinners;
+
+  return seeded.slice(0, 4).map((s, i) => ({
     seed: i + 1,
+    conference,
+    division: s.team.division,
     teamId: s.teamId,
     name: s.team.name,
     abbreviation: s.team.abbreviation,
     primaryColor: s.team.primaryColor,
     secondaryColor: s.team.secondaryColor,
     record: `${s.wins}-${s.losses}${s.ties ? `-${s.ties}` : ""}`,
+    winPct: winPct(s),
+    pointsFor: s.pointsFor,
   }));
 }
 
@@ -66,7 +100,7 @@ async function simulateAndPersistPlayoffGame(
   seasonId: string,
   homeSeed: PlayoffSeedTeam,
   awaySeed: PlayoffSeedTeam,
-  round: "Semifinal" | "Championship",
+  round: string,
   week: number
 ) {
   const [homeTeam, awayTeam] = await Promise.all([
@@ -102,7 +136,7 @@ async function simulateAndPersistPlayoffGame(
     attempts++;
   }
 
-  const game = await persistSimulatedGame({
+  return persistSimulatedGame({
     homeTeamId: homeSeed.teamId,
     awayTeamId: awaySeed.teamId,
     seasonId,
@@ -112,80 +146,6 @@ async function simulateAndPersistPlayoffGame(
     playoffRound: round,
     countsForStandings: false,
   });
-
-  return game;
-}
-
-function toMatchup(
-  game: { id: string; status: string; homeScore: number; awayScore: number },
-  round: "Semifinal" | "Championship",
-  home: PlayoffSeedTeam,
-  away: PlayoffSeedTeam
-): PlayoffMatchup {
-  const winnerTeamId =
-    game.status === "FINAL"
-      ? game.homeScore > game.awayScore
-        ? home.teamId
-        : away.teamId
-      : null;
-  return {
-    gameId: game.id,
-    round,
-    status: game.status,
-    home,
-    away,
-    homeScore: game.homeScore,
-    awayScore: game.awayScore,
-    winnerTeamId,
-  };
-}
-
-export async function runPlayoffs(seasonId: string): Promise<PlayoffBracketResult> {
-  const season = await prisma.season.findUnique({ where: { id: seasonId } });
-  if (!season) throw new Error("Season not found");
-  if (season.status !== "COMPLETED") {
-    throw new Error("Finish the regular season before running the playoffs.");
-  }
-
-  const seeds = await getSeeds(seasonId);
-  if (seeds.length < 4) {
-    throw new Error("At least 4 teams with standings are required for a playoff bracket.");
-  }
-  const [seed1, seed2, seed3, seed4] = seeds;
-  const semifinalWeek = season.totalWeeks + 1;
-  const championshipWeek = season.totalWeeks + 2;
-
-  const existingPlayoffGames = await prisma.game.findMany({ where: { seasonId, isPlayoff: true } });
-  let sf1 = existingPlayoffGames.find((g) => g.playoffRound === "Semifinal" && g.week === semifinalWeek && involvesTeams(g, seed1.teamId, seed4.teamId));
-  let sf2 = existingPlayoffGames.find((g) => g.playoffRound === "Semifinal" && g.week === semifinalWeek && involvesTeams(g, seed2.teamId, seed3.teamId));
-
-  if (!sf1) sf1 = await simulateAndPersistPlayoffGame(seasonId, seed1, seed4, "Semifinal", semifinalWeek);
-  if (!sf2) sf2 = await simulateAndPersistPlayoffGame(seasonId, seed2, seed3, "Semifinal", semifinalWeek);
-
-  const sf1Matchup = toMatchup(sf1, "Semifinal", seed1, seed4);
-  const sf2Matchup = toMatchup(sf2, "Semifinal", seed2, seed3);
-
-  const finalistA = sf1Matchup.winnerTeamId === seed1.teamId ? seed1 : seed4;
-  const finalistB = sf2Matchup.winnerTeamId === seed2.teamId ? seed2 : seed3;
-
-  // The better remaining seed hosts the championship game.
-  const [champHome, champAway] = finalistA.seed <= finalistB.seed ? [finalistA, finalistB] : [finalistB, finalistA];
-
-  let championshipGame = existingPlayoffGames.find(
-    (g) => g.playoffRound === "Championship" && g.week === championshipWeek
-  );
-  if (!championshipGame) {
-    championshipGame = await simulateAndPersistPlayoffGame(seasonId, champHome, champAway, "Championship", championshipWeek);
-  }
-  const championshipMatchup = toMatchup(championshipGame, "Championship", champHome, champAway);
-
-  return {
-    seasonId,
-    seeds,
-    semifinals: [sf1Matchup, sf2Matchup],
-    championship: championshipMatchup,
-    championTeamId: championshipMatchup.winnerTeamId,
-  };
 }
 
 function involvesTeams(game: { homeTeamId: string; awayTeamId: string }, teamA: string, teamB: string) {
@@ -195,35 +155,122 @@ function involvesTeams(game: { homeTeamId: string; awayTeamId: string }, teamA: 
   );
 }
 
-export async function getExistingBracket(seasonId: string): Promise<PlayoffBracketResult | null> {
-  const games = await prisma.game.findMany({ where: { seasonId, isPlayoff: true } });
-  if (games.length === 0) return null;
+function toMatchup(
+  game: { id: string; status: string; homeScore: number; awayScore: number },
+  round: PlayoffRound,
+  conference: string | null,
+  home: PlayoffSeedTeam,
+  away: PlayoffSeedTeam
+): PlayoffMatchup {
+  const winnerTeamId = game.status === "FINAL" ? (game.homeScore > game.awayScore ? home.teamId : away.teamId) : null;
+  return { gameId: game.id, round, conference, status: game.status, home, away, homeScore: game.homeScore, awayScore: game.awayScore, winnerTeamId };
+}
 
-  const seeds = await getSeeds(seasonId);
-  if (seeds.length < 4) return null;
-  const [seed1, seed2, seed3, seed4] = seeds;
+type PlayoffGame = Awaited<ReturnType<typeof simulateAndPersistPlayoffGame>>;
 
-  const sf1 = games.find((g) => g.playoffRound === "Semifinal" && involvesTeams(g, seed1.teamId, seed4.teamId));
-  const sf2 = games.find((g) => g.playoffRound === "Semifinal" && involvesTeams(g, seed2.teamId, seed3.teamId));
-  if (!sf1 || !sf2) return null;
+async function resolveMatchupGame(
+  pool: PlayoffGame[],
+  seasonId: string,
+  round: string,
+  home: PlayoffSeedTeam,
+  away: PlayoffSeedTeam,
+  week: number,
+  simulate: boolean
+): Promise<PlayoffGame | null> {
+  const existing = pool.find((g) => g.playoffRound === round && involvesTeams(g, home.teamId, away.teamId));
+  if (existing) return existing;
+  if (!simulate) return null;
+  const created = await simulateAndPersistPlayoffGame(seasonId, home, away, round, week);
+  pool.push(created);
+  return created;
+}
 
-  const sf1Matchup = toMatchup(sf1, "Semifinal", seed1, seed4);
-  const sf2Matchup = toMatchup(sf2, "Semifinal", seed2, seed3);
+async function buildBracket(seasonId: string, simulate: boolean): Promise<PlayoffBracketResult | null> {
+  const season = await prisma.season.findUnique({ where: { id: seasonId } });
+  if (!season) return null;
+  if (simulate && season.status !== "COMPLETED") {
+    throw new Error("Finish the regular season before running the playoffs.");
+  }
 
-  const championshipGame = games.find((g) => g.playoffRound === "Championship");
-  let championshipMatchup: PlayoffMatchup | null = null;
-  if (championshipGame) {
-    const finalistA = sf1Matchup.winnerTeamId === seed1.teamId ? seed1 : seed4;
-    const finalistB = sf2Matchup.winnerTeamId === seed2.teamId ? seed2 : seed3;
-    const [champHome, champAway] = finalistA.seed <= finalistB.seed ? [finalistA, finalistB] : [finalistB, finalistA];
-    championshipMatchup = toMatchup(championshipGame, "Championship", champHome, champAway);
+  const conferenceNames = Array.from(
+    new Set((await prisma.team.findMany({ where: { leagueId: season.leagueId }, select: { conference: true } })).map((t) => t.conference))
+  );
+  if (conferenceNames.length < 2) {
+    if (simulate) throw new Error("At least two conferences are required for playoffs.");
+    return null;
+  }
+
+  const gamePool = await prisma.game.findMany({ where: { seasonId, isPlayoff: true } });
+  if (!simulate && gamePool.length === 0) return null;
+
+  const semifinalWeek = season.totalWeeks + 1;
+  const confChampWeek = season.totalWeeks + 2;
+  const leagueChampWeek = season.totalWeeks + 3;
+
+  const conferences: ConferenceBracket[] = [];
+
+  for (const conference of conferenceNames) {
+    const seeds = await getConferenceSeeds(seasonId, conference);
+    if (seeds.length < 4) {
+      if (simulate) throw new Error(`${conference} needs at least 4 playoff-eligible teams.`);
+      conferences.push({ conference, seeds, semifinals: [], championship: null });
+      continue;
+    }
+    const [s1, s2, s3, s4] = seeds;
+
+    const sf1Game = await resolveMatchupGame(gamePool, seasonId, `${conference} Semifinal`, s1, s4, semifinalWeek, simulate);
+    const sf2Game = await resolveMatchupGame(gamePool, seasonId, `${conference} Semifinal`, s2, s3, semifinalWeek, simulate);
+    if (!sf1Game || !sf2Game) {
+      conferences.push({ conference, seeds, semifinals: [], championship: null });
+      continue;
+    }
+
+    const sf1Matchup = toMatchup(sf1Game, "Conference Semifinal", conference, s1, s4);
+    const sf2Matchup = toMatchup(sf2Game, "Conference Semifinal", conference, s2, s3);
+
+    let championship: PlayoffMatchup | null = null;
+    if (sf1Matchup.winnerTeamId && sf2Matchup.winnerTeamId) {
+      const finalistA = sf1Matchup.winnerTeamId === s1.teamId ? s1 : s4;
+      const finalistB = sf2Matchup.winnerTeamId === s2.teamId ? s2 : s3;
+      const [home, away] = finalistA.seed <= finalistB.seed ? [finalistA, finalistB] : [finalistB, finalistA];
+      const champGame = await resolveMatchupGame(gamePool, seasonId, `${conference} Championship`, home, away, confChampWeek, simulate);
+      if (champGame) championship = toMatchup(champGame, "Conference Championship", conference, home, away);
+    }
+
+    conferences.push({ conference, seeds, semifinals: [sf1Matchup, sf2Matchup], championship });
+  }
+
+  let leagueChampionship: PlayoffMatchup | null = null;
+  const finalists = conferences.map((cb) =>
+    cb.championship?.status === "FINAL"
+      ? cb.championship.winnerTeamId === cb.championship.home.teamId
+        ? cb.championship.home
+        : cb.championship.away
+      : null
+  );
+  if (conferences.length === 2 && finalists[0] && finalists[1]) {
+    const teamA = finalists[0];
+    const teamB = finalists[1];
+    const aHosts = teamA.winPct > teamB.winPct || (teamA.winPct === teamB.winPct && teamA.pointsFor >= teamB.pointsFor);
+    const [home, away] = aHosts ? [teamA, teamB] : [teamB, teamA];
+    const finalGame = await resolveMatchupGame(gamePool, seasonId, "League Championship", home, away, leagueChampWeek, simulate);
+    if (finalGame) leagueChampionship = toMatchup(finalGame, "League Championship", null, home, away);
   }
 
   return {
     seasonId,
-    seeds,
-    semifinals: [sf1Matchup, sf2Matchup],
-    championship: championshipMatchup,
-    championTeamId: championshipMatchup?.winnerTeamId ?? null,
+    conferences,
+    leagueChampionship,
+    championTeamId: leagueChampionship?.status === "FINAL" ? leagueChampionship.winnerTeamId : null,
   };
+}
+
+export async function runPlayoffs(seasonId: string): Promise<PlayoffBracketResult> {
+  const result = await buildBracket(seasonId, true);
+  if (!result) throw new Error("Season not found");
+  return result;
+}
+
+export async function getExistingBracket(seasonId: string): Promise<PlayoffBracketResult | null> {
+  return buildBracket(seasonId, false);
 }

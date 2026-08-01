@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       currentWeek: 0,
       totalWeeks,
       seasonTeams: { create: teams.map((t) => ({ teamId: t.id })) },
-      standings: { create: teams.map((t) => ({ teamId: t.id })) },
+      standings: { create: teams.map((t) => ({ teamId: t.id, division: t.division })) },
       games: {
         create: schedule.map((m) => ({
           homeTeamId: m.homeTeamId,

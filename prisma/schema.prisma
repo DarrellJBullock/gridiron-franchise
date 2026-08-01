@@ -78,6 +78,8 @@ model Team {
   abbreviation    String
   city            String
   state           String?
+  conference      String   @default("Eastern Conference")
+  division        String   @default("Atlantic")
   primaryColor    String   @default("#0EA5E9")
   secondaryColor  String   @default("#0F172A")
   logoPlaceholder String   @default("shield")

@@ -9,6 +9,7 @@ export interface StandingRow {
   abbreviation: string;
   primaryColor: string;
   secondaryColor: string;
+  conference: string;
   division: string;
   wins: number;
   losses: number;
@@ -18,26 +19,38 @@ export interface StandingRow {
   streak: string;
 }
 
+function byRecord(a: StandingRow, b: StandingRow) {
+  const winPctA = a.wins / Math.max(1, a.wins + a.losses + a.ties);
+  const winPctB = b.wins / Math.max(1, b.wins + b.losses + b.ties);
+  return winPctB - winPctA || b.pointsFor - a.pointsFor;
+}
+
 export function StandingsTable({ rows }: { rows: StandingRow[] }) {
-  const byDivision = rows.reduce<Record<string, StandingRow[]>>((acc, row) => {
-    (acc[row.division] ??= []).push(row);
+  const byConference = rows.reduce<Record<string, Record<string, StandingRow[]>>>((acc, row) => {
+    const conf = (acc[row.conference] ??= {});
+    (conf[row.division] ??= []).push(row);
     return acc;
   }, {});
 
-  for (const division of Object.keys(byDivision)) {
-    byDivision[division].sort((a, b) => {
-      const winPctA = a.wins / Math.max(1, a.wins + a.losses + a.ties);
-      const winPctB = b.wins / Math.max(1, b.wins + b.losses + b.ties);
-      return winPctB - winPctA || b.pointsFor - a.pointsFor;
-    });
-  }
-
   return (
-    <div className="flex flex-col gap-6">
-      {Object.entries(byDivision).map(([division, teams]) => (
-        <div key={division}>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">{division} Division</p>
-          <Table>
+    <div className="flex flex-col gap-8">
+      {Object.entries(byConference).map(([conference, byDivision]) => (
+        <div key={conference} className="flex flex-col gap-6">
+          <p className="text-sm font-bold uppercase tracking-wide text-accent-blue">{conference}</p>
+          {Object.entries(byDivision).map(([division, teams]) => (
+            <DivisionTable key={division} division={division} teams={[...teams].sort(byRecord)} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DivisionTable({ division, teams }: { division: string; teams: StandingRow[] }) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">{division} Division</p>
+      <Table>
             <Thead>
               <Tr>
                 <Th>Team</Th>
@@ -82,9 +95,7 @@ export function StandingsTable({ rows }: { rows: StandingRow[] }) {
                 </Tr>
               ))}
             </Tbody>
-          </Table>
-        </div>
-      ))}
+      </Table>
     </div>
   );
 }

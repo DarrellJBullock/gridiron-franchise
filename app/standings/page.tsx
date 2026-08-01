@@ -40,6 +40,7 @@ export default async function StandingsPage() {
             abbreviation: s.team.abbreviation,
             primaryColor: s.team.primaryColor,
             secondaryColor: s.team.secondaryColor,
+            conference: s.team.conference,
             division: s.division,
             wins: s.wins,
             losses: s.losses,
