@@ -64,3 +64,25 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     topPlayers: team.players.slice(0, 5),
   });
 }
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const league = await getOrCreateUserLeague(userId);
+  const { id } = await params;
+
+  const team = await prisma.team.findFirst({ where: { id, leagueId: league.id } });
+  if (!team) {
+    return NextResponse.json({ error: "Team not found" }, { status: 404 });
+  }
+
+  // Games reference Team without cascade, so they have to go before the team
+  // itself; everything else (players, depth charts, standings, season-team
+  // links) cascades from the Team delete.
+  await prisma.game.deleteMany({ where: { OR: [{ homeTeamId: id }, { awayTeamId: id }] } });
+  await prisma.team.delete({ where: { id } });
+
+  return NextResponse.json({ success: true });
+}

@@ -9,6 +9,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
 import { PositionBadge } from "@/components/football/PositionBadge";
 import { TeamLogo } from "@/components/football/TeamLogo";
+import { DeleteTeamButton } from "@/components/football/DeleteTeamButton";
 import { calculateTeamStrengths } from "@/lib/simulation/team-ratings";
 import { toRatedPlayer } from "@/lib/football-mappers";
 
@@ -62,13 +63,14 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
               </p>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <LinkButton href={`/depth-chart?teamId=${team.id}`} variant="secondary" size="md">
               View Depth Chart
             </LinkButton>
             <LinkButton href={`/matchup?homeTeamId=${team.id}`} size="md">
               Simulate Matchup
             </LinkButton>
+            <DeleteTeamButton teamId={team.id} teamName={team.name} />
           </div>
         </div>
 
