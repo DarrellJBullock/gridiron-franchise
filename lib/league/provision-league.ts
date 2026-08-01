@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { PrismaClient, Position } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/prisma";
 import {
@@ -37,148 +38,184 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
  * round-robin season schedule) owned by the given user. Shared by the CLI
  * seed script and first-sign-in auto-provisioning so both paths produce
  * identical league content.
+ *
+ * Everything is built in memory first and written with bulk createMany
+ * calls inside one transaction: a single sequential await-per-row version
+ * of this (~500+ round trips) took 60-70s against Neon and, worse, left a
+ * half-built league (and Team/Player rows) visible to any concurrent
+ * request that queried League.ownerId in the meantime. The transaction
+ * means other queries see either no league or a complete one, never a
+ * partial one.
  */
 export async function provisionLeagueForOwner(ownerId: string, client: PrismaClient = defaultPrisma) {
-  const league = await client.league.create({
-    data: {
-      ownerId,
-      name: "Gridiron Franchise League",
-      description: "An original, fictional football league built for the Gridiron Franchise simulator.",
-    },
-  });
-
-  const usedNames = new Set<string>();
-
-  for (const teamTemplate of TEAM_TEMPLATES) {
-    const team = await client.team.create({
-      data: {
-        leagueId: league.id,
-        name: teamTemplate.name,
-        abbreviation: teamTemplate.abbreviation,
-        city: teamTemplate.city,
-        state: teamTemplate.state,
-        primaryColor: teamTemplate.primaryColor,
-        secondaryColor: teamTemplate.secondaryColor,
-      },
-    });
-
-    const ratedPlayers: RatedPlayer[] = [];
-
-    for (const slot of ROSTER_COMPOSITION) {
-      for (let i = 0; i < slot.count; i++) {
-        const attrs = generatePlayerAttributes(slot.position, teamTemplate.quality, usedNames);
-        const yearsPro = randomYearsPro();
-        const age = ageForYearsPro(yearsPro);
-
-        const player = await client.player.create({
-          data: {
-            teamId: team.id,
-            firstName: attrs.firstName,
-            lastName: attrs.lastName,
-            jerseyNumber: randomInt(0, 99),
-            position: slot.position,
-            height: attrs.height,
-            weight: attrs.weight,
-            classYear: classYearForExperience(yearsPro),
-            hometown: attrs.hometown,
-            archetype: attrs.archetype,
-            overall: attrs.overall,
-            age,
-            yearsPro,
-            ratings: {
-              create: Object.entries(attrs.ratings).map(([ratingName, ratingValue]) => ({
-                ratingName,
-                ratingValue,
-              })),
-            },
-          },
-        });
-
-        ratedPlayers.push({
-          id: player.id,
-          firstName: player.firstName,
-          lastName: player.lastName,
-          position: player.position,
-          overall: player.overall,
-        });
-      }
-    }
-
-    // Fix jersey collisions within a team by reassigning sequentially where needed.
-    const teamPlayers = await client.player.findMany({ where: { teamId: team.id } });
-    const seenJerseys = new Set<number>();
-    for (const p of teamPlayers) {
-      let jersey = p.jerseyNumber;
-      while (seenJerseys.has(jersey)) {
-        jersey = randomInt(0, 99);
-      }
-      seenJerseys.add(jersey);
-      if (jersey !== p.jerseyNumber) {
-        await client.player.update({ where: { id: p.id }, data: { jerseyNumber: jersey } });
-      }
-    }
-
-    const teamRatings = calculateTeamRatings(ratedPlayers);
-    await client.team.update({
-      where: { id: team.id },
-      data: {
-        overallRating: teamRatings.overallRating,
-        offenseRating: teamRatings.offenseRating,
-        defenseRating: teamRatings.defenseRating,
-        specialTeamsRating: teamRatings.specialTeamsRating,
-      },
-    });
-
-    // Seed a basic depth chart: top player per position as starter, next two as backups.
-    const byPosition = new Map<Position, RatedPlayer[]>();
-    for (const p of ratedPlayers) {
-      const list = byPosition.get(p.position) ?? [];
-      list.push(p);
-      byPosition.set(p.position, list);
-    }
-    for (const [position, players] of byPosition.entries()) {
-      const sorted = [...players].sort((a, b) => b.overall - a.overall);
-      await client.depthChart.create({
+  return client.$transaction(
+    async (tx) => {
+      const league = await tx.league.create({
         data: {
-          teamId: team.id,
-          position,
-          starterPlayerId: sorted[0]?.id,
-          backup1PlayerId: sorted[1]?.id,
-          backup2PlayerId: sorted[2]?.id,
+          ownerId,
+          name: "Gridiron Franchise League",
+          description: "An original, fictional football league built for the Gridiron Franchise simulator.",
         },
       });
-    }
-  }
 
-  const allTeams = await client.team.findMany({ where: { leagueId: league.id } });
-  const schedule = generateRoundRobinSchedule(allTeams.map((t) => t.id));
-  const totalWeeks = Math.max(...schedule.map((m) => m.week));
+      const teamRows = TEAM_TEMPLATES.map((t) => ({
+        id: randomUUID(),
+        leagueId: league.id,
+        name: t.name,
+        abbreviation: t.abbreviation,
+        city: t.city,
+        state: t.state,
+        primaryColor: t.primaryColor,
+        secondaryColor: t.secondaryColor,
+      }));
+      await tx.team.createMany({ data: teamRows });
 
-  await client.season.create({
-    data: {
-      leagueId: league.id,
-      name: "Season 1",
-      year: new Date().getFullYear(),
-      status: "NOT_STARTED",
-      currentWeek: 0,
-      totalWeeks,
-      seasonTeams: { create: allTeams.map((t) => ({ teamId: t.id })) },
-      standings: {
-        create: allTeams.map((t) => ({
-          teamId: t.id,
-          division: t.state === "DE" || t.state === "NJ" || t.state === "PA" ? "Atlantic" : "Frontier",
-        })),
-      },
-      games: {
-        create: schedule.map((m) => ({
-          homeTeamId: m.homeTeamId,
-          awayTeamId: m.awayTeamId,
-          week: m.week,
-          status: "SCHEDULED",
-        })),
-      },
+      const usedNames = new Set<string>();
+      const playerRows: {
+        id: string;
+        teamId: string;
+        firstName: string;
+        lastName: string;
+        jerseyNumber: number;
+        position: Position;
+        height: number;
+        weight: number;
+        classYear: string;
+        hometown: string;
+        archetype: string;
+        overall: number;
+        age: number;
+        yearsPro: number;
+      }[] = [];
+      const ratingRows: { id: string; playerId: string; ratingName: string; ratingValue: number }[] = [];
+      const depthChartRows: {
+        id: string;
+        teamId: string;
+        position: Position;
+        starterPlayerId: string | undefined;
+        backup1PlayerId: string | undefined;
+        backup2PlayerId: string | undefined;
+      }[] = [];
+      const teamRatingUpdates: { id: string; overallRating: number; offenseRating: number; defenseRating: number; specialTeamsRating: number }[] = [];
+
+      TEAM_TEMPLATES.forEach((teamTemplate, teamIndex) => {
+        const teamId = teamRows[teamIndex].id;
+        const ratedPlayers: RatedPlayer[] = [];
+        const usedJerseys = new Set<number>();
+
+        for (const slot of ROSTER_COMPOSITION) {
+          for (let i = 0; i < slot.count; i++) {
+            const attrs = generatePlayerAttributes(slot.position, teamTemplate.quality, usedNames);
+            const yearsPro = randomYearsPro();
+            const age = ageForYearsPro(yearsPro);
+            const playerId = randomUUID();
+
+            let jersey = randomInt(0, 99);
+            while (usedJerseys.has(jersey)) {
+              jersey = randomInt(0, 99);
+            }
+            usedJerseys.add(jersey);
+
+            playerRows.push({
+              id: playerId,
+              teamId,
+              firstName: attrs.firstName,
+              lastName: attrs.lastName,
+              jerseyNumber: jersey,
+              position: slot.position,
+              height: attrs.height,
+              weight: attrs.weight,
+              classYear: classYearForExperience(yearsPro),
+              hometown: attrs.hometown,
+              archetype: attrs.archetype,
+              overall: attrs.overall,
+              age,
+              yearsPro,
+            });
+
+            for (const [ratingName, ratingValue] of Object.entries(attrs.ratings)) {
+              ratingRows.push({ id: randomUUID(), playerId, ratingName, ratingValue });
+            }
+
+            ratedPlayers.push({
+              id: playerId,
+              firstName: attrs.firstName,
+              lastName: attrs.lastName,
+              position: slot.position,
+              overall: attrs.overall,
+            });
+          }
+        }
+
+        const teamRatings = calculateTeamRatings(ratedPlayers);
+        teamRatingUpdates.push({ id: teamId, ...teamRatings });
+
+        const byPosition = new Map<Position, RatedPlayer[]>();
+        for (const p of ratedPlayers) {
+          const list = byPosition.get(p.position) ?? [];
+          list.push(p);
+          byPosition.set(p.position, list);
+        }
+        for (const [position, players] of byPosition.entries()) {
+          const sorted = [...players].sort((a, b) => b.overall - a.overall);
+          depthChartRows.push({
+            id: randomUUID(),
+            teamId,
+            position,
+            starterPlayerId: sorted[0]?.id,
+            backup1PlayerId: sorted[1]?.id,
+            backup2PlayerId: sorted[2]?.id,
+          });
+        }
+      });
+
+      await tx.player.createMany({ data: playerRows });
+      await tx.playerRating.createMany({ data: ratingRows });
+      await tx.depthChart.createMany({ data: depthChartRows });
+
+      for (const update of teamRatingUpdates) {
+        await tx.team.update({
+          where: { id: update.id },
+          data: {
+            overallRating: update.overallRating,
+            offenseRating: update.offenseRating,
+            defenseRating: update.defenseRating,
+            specialTeamsRating: update.specialTeamsRating,
+          },
+        });
+      }
+
+      const schedule = generateRoundRobinSchedule(teamRows.map((t) => t.id));
+      const totalWeeks = Math.max(...schedule.map((m) => m.week));
+
+      await tx.season.create({
+        data: {
+          leagueId: league.id,
+          name: "Season 1",
+          year: new Date().getFullYear(),
+          status: "NOT_STARTED",
+          currentWeek: 0,
+          totalWeeks,
+          seasonTeams: { create: teamRows.map((t) => ({ teamId: t.id })) },
+          standings: {
+            create: teamRows.map((t) => ({
+              teamId: t.id,
+              division: t.state === "DE" || t.state === "NJ" || t.state === "PA" ? "Atlantic" : "Frontier",
+            })),
+          },
+          games: {
+            create: schedule.map((m) => ({
+              homeTeamId: m.homeTeamId,
+              awayTeamId: m.awayTeamId,
+              week: m.week,
+              status: "SCHEDULED",
+            })),
+          },
+        },
+      });
+
+      return league;
     },
-  });
-
-  return league;
+    { timeout: 30_000, maxWait: 10_000 }
+  );
 }
