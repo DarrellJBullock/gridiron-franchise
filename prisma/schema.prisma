@@ -60,6 +60,7 @@ enum IssueSeverity {
 
 model League {
   id          String   @id @default(cuid())
+  ownerId     String   @unique
   name        String
   description String?
   createdAt   DateTime @default(now())
@@ -67,6 +68,7 @@ model League {
 
   teams   Team[]
   seasons Season[]
+  rosterImports RosterImport[]
 }
 
 model Team {
@@ -304,6 +306,7 @@ model Standing {
 
 model RosterImport {
   id             String              @id @default(cuid())
+  leagueId       String
   fileName       String
   status         RosterImportStatus  @default(PENDING)
   rowCount       Int                 @default(0)
@@ -312,8 +315,11 @@ model RosterImport {
   warningCount   Int                 @default(0)
   createdAt      DateTime            @default(now())
 
+  league League                 @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   rows   RosterImportRow[]
   issues RosterValidationIssue[]
+
+  @@index([leagueId])
 }
 
 model RosterImportRow {

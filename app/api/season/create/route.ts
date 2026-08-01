@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 import { generateRoundRobinSchedule } from "@/lib/simulation/schedule";
 
 interface CreateSeasonBody {
@@ -8,17 +10,16 @@ interface CreateSeasonBody {
 }
 
 export async function POST(req: Request) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const league = await getOrCreateUserLeague(userId);
+
   const body = (await req.json().catch(() => ({}))) as CreateSeasonBody;
 
-  let league = await prisma.league.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!league) {
-    league = await prisma.league.create({
-      data: { name: "Gridiron Franchise League", description: "Original fictional league." },
-    });
-  }
-
   const teams = body.teamIds?.length
-    ? await prisma.team.findMany({ where: { id: { in: body.teamIds } } })
+    ? await prisma.team.findMany({ where: { id: { in: body.teamIds }, leagueId: league.id } })
     : await prisma.team.findMany({ where: { leagueId: league.id } });
 
   if (teams.length < 2) {
@@ -53,6 +54,15 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  const seasons = await prisma.season.findMany({ orderBy: { createdAt: "desc" } });
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const league = await getOrCreateUserLeague(userId);
+
+  const seasons = await prisma.season.findMany({
+    where: { leagueId: league.id },
+    orderBy: { createdAt: "desc" },
+  });
   return NextResponse.json({ seasons });
 }

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 import { parseRosterFile } from "@/lib/roster/parser";
 import { validateRosterRows, type ValidRosterRow } from "@/lib/roster/validator";
 import { calculateTeamRatings, type RatedPlayer } from "@/lib/simulation/team-ratings";
@@ -7,11 +9,12 @@ import { ALL_RATING_NAMES, type Position } from "@/types/football";
 
 export const runtime = "nodejs";
 
-async function persistValidationRun(fileName: string, rowCount: number, result: ReturnType<typeof validateRosterRows>, rawRows: { rowNumber: number; data: Record<string, unknown> }[]) {
+async function persistValidationRun(leagueId: string, fileName: string, rowCount: number, result: ReturnType<typeof validateRosterRows>, rawRows: { rowNumber: number; data: Record<string, unknown> }[]) {
   const status = result.errorCount > 0 && result.validRows.length === 0 ? "FAILED" : "VALIDATED";
 
   const rosterImport = await prisma.rosterImport.create({
     data: {
+      leagueId,
       fileName,
       status,
       rowCount,
@@ -40,13 +43,19 @@ async function persistValidationRun(fileName: string, rowCount: number, result: 
 }
 
 export async function POST(req: Request) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const league = await getOrCreateUserLeague(userId);
+
   const formData = await req.formData();
   const mode = String(formData.get("mode") ?? "validate");
 
   if (mode === "confirm") {
     const rosterImportId = String(formData.get("rosterImportId") ?? "");
-    const rosterImport = await prisma.rosterImport.findUnique({
-      where: { id: rosterImportId },
+    const rosterImport = await prisma.rosterImport.findFirst({
+      where: { id: rosterImportId, leagueId: league.id },
       include: { rows: true },
     });
     if (!rosterImport) {
@@ -59,13 +68,6 @@ export async function POST(req: Request) {
     }));
     const result = validateRosterRows(rawRows);
 
-    let league = await prisma.league.findFirst({ orderBy: { createdAt: "asc" } });
-    if (!league) {
-      league = await prisma.league.create({
-        data: { name: "Gridiron Franchise League", description: "Original fictional league." },
-      });
-    }
-
     const byTeam = new Map<string, ValidRosterRow[]>();
     for (const row of result.validRows) {
       const list = byTeam.get(row.data.teamAbbreviation) ?? [];
@@ -77,7 +79,7 @@ export async function POST(req: Request) {
 
     for (const [abbreviation, rows] of byTeam.entries()) {
       const first = rows[0].data;
-      let team = await prisma.team.findFirst({ where: { abbreviation } });
+      let team = await prisma.team.findFirst({ where: { abbreviation, leagueId: league.id } });
 
       if (team) {
         await prisma.player.deleteMany({ where: { teamId: team.id } });
@@ -189,7 +191,7 @@ export async function POST(req: Request) {
 
   const parsed = await parseRosterFile(file);
   const result = validateRosterRows(parsed.rows);
-  const rosterImport = await persistValidationRun(file.name, parsed.rows.length, result, parsed.rows);
+  const rosterImport = await persistValidationRun(league.id, file.name, parsed.rows.length, result, parsed.rows);
 
   return NextResponse.json({
     rosterImportId: rosterImport.id,
@@ -204,7 +206,14 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const league = await getOrCreateUserLeague(userId);
+
   const imports = await prisma.rosterImport.findMany({
+    where: { leagueId: league.id },
     orderBy: { createdAt: "desc" },
     take: 25,
   });
