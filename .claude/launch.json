@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "gridiron-dev",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["scripts/run-dev.sh"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
       "port": 3000
     }
   ]

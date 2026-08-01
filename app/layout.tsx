@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import { AppShell } from "@/components/ui/AppShell";
 import "./globals.css";
 
@@ -30,7 +31,16 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
       <body className="min-h-full">
-        <AppShell>{children}</AppShell>
+        <ClerkProvider
+          appearance={{
+            variables: {
+              colorPrimary: "#f5a623",
+              colorBackground: "#0f1420",
+            },
+          }}
+        >
+          <AppShell>{children}</AppShell>
+        </ClerkProvider>
       </body>
     </html>
   );
