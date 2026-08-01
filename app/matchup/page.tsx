@@ -1,16 +1,17 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { SimulationControls } from "@/components/simulation/SimulationControls";
 import { TeamAdvantagePanel } from "@/components/simulation/TeamAdvantagePanel";
+import { LiveGamePlayer } from "@/components/simulation/LiveGamePlayer";
 import { MatchupComparison } from "@/components/football/MatchupComparison";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { TeamCardData } from "@/components/football/TeamCard";
+import type { SimulatedGameResult } from "@/types/football";
 
 function MatchupInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [teams, setTeams] = useState<TeamCardData[]>([]);
   const [homeTeamId, setHomeTeamId] = useState(searchParams.get("homeTeamId") ?? "");
@@ -18,6 +19,7 @@ function MatchupInner() {
   const [loading, setLoading] = useState(true);
   const [simulating, setSimulating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [live, setLive] = useState<{ gameId: string; result: SimulatedGameResult } | null>(null);
 
   useEffect(() => {
     fetch("/api/teams")
@@ -41,12 +43,32 @@ function MatchupInner() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Simulation failed");
-      router.push(`/game/${data.gameId}`);
+      setLive({ gameId: data.gameId, result: data.result });
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSimulating(false);
     }
+  }
+
+  if (live && homeTeam && awayTeam) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-accent">Gameday</p>
+            <h1 className="text-2xl font-black text-text-primary">Watching Live</h1>
+          </div>
+          <button
+            className="text-xs font-semibold text-text-muted hover:text-text-primary"
+            onClick={() => setLive(null)}
+          >
+            ← New Matchup
+          </button>
+        </div>
+        <LiveGamePlayer gameId={live.gameId} result={live.result} home={homeTeam} away={awayTeam} />
+      </div>
+    );
   }
 
   return (
