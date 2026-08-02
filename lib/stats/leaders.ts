@@ -21,6 +21,10 @@ export async function getStatLeaders(leagueId: string, seasonId?: string) {
       forcedFumbles: true,
       interceptionsMade: true,
       fieldGoalsMade: true,
+      kickReturnYards: true,
+      kickReturnTouchdowns: true,
+      puntReturnYards: true,
+      puntReturnTouchdowns: true,
     },
   });
 
@@ -36,6 +40,7 @@ export async function getStatLeaders(leagueId: string, seasonId?: string) {
       points: [],
       rushingTouchdowns: [],
       receivingTouchdowns: [],
+      returns: [],
     };
   }
 
@@ -75,8 +80,16 @@ export async function getStatLeaders(leagueId: string, seasonId?: string) {
     interceptions: topBy((g) => g._sum.interceptionsMade ?? 0),
     // Points only counts scores the player personally crossed the goal line or kicked for —
     // passing touchdowns aren't included since the passer didn't score.
-    points: topBy((g) => (g._sum.rushingTouchdowns ?? 0) * 6 + (g._sum.receivingTouchdowns ?? 0) * 6 + (g._sum.fieldGoalsMade ?? 0) * 3),
+    points: topBy(
+      (g) =>
+        (g._sum.rushingTouchdowns ?? 0) * 6 +
+        (g._sum.receivingTouchdowns ?? 0) * 6 +
+        (g._sum.kickReturnTouchdowns ?? 0) * 6 +
+        (g._sum.puntReturnTouchdowns ?? 0) * 6 +
+        (g._sum.fieldGoalsMade ?? 0) * 3
+    ),
     rushingTouchdowns: topBy((g) => g._sum.rushingTouchdowns ?? 0),
     receivingTouchdowns: topBy((g) => g._sum.receivingTouchdowns ?? 0),
+    returns: topBy((g) => (g._sum.kickReturnYards ?? 0) + (g._sum.puntReturnYards ?? 0)),
   };
 }

@@ -20,6 +20,9 @@ function pointsForPlay(play: PlayByPlayEntry): number {
   switch (play.playType) {
     case "touchdown":
       return 6;
+    case "kick_return":
+    case "punt_return":
+      return play.isScoring ? 6 : 0;
     case "extra_point":
       return 1;
     case "field_goal":
@@ -51,6 +54,9 @@ function playIcon(playType: PlayByPlayEntry["playType"]) {
       return "🚫";
     case "punt":
       return "👢";
+    case "kick_return":
+    case "punt_return":
+      return "🔄";
     case "interception":
     case "fumble":
       return "⚠️";

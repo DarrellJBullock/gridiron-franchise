@@ -74,6 +74,18 @@ export class PlayerStatAccumulator {
     line.fieldGoalsMade = (line.fieldGoalsMade ?? 0) + 1;
   }
 
+  addKickReturn(player: RatedPlayer, yards: number, touchdown: boolean) {
+    const line = this.get(player);
+    line.kickReturnYards = (line.kickReturnYards ?? 0) + yards;
+    if (touchdown) line.kickReturnTouchdowns = (line.kickReturnTouchdowns ?? 0) + 1;
+  }
+
+  addPuntReturn(player: RatedPlayer, yards: number, touchdown: boolean) {
+    const line = this.get(player);
+    line.puntReturnYards = (line.puntReturnYards ?? 0) + yards;
+    if (touchdown) line.puntReturnTouchdowns = (line.puntReturnTouchdowns ?? 0) + 1;
+  }
+
   values(): GamePlayerStatLine[] {
     return Array.from(this.lines.values());
   }
@@ -91,7 +103,11 @@ function performanceScore(line: GamePlayerStatLine): number {
     (line.sacks ?? 0) * 2 +
     (line.forcedFumbles ?? 0) * 3 +
     (line.interceptionsMade ?? 0) * 4 +
-    (line.fieldGoalsMade ?? 0) * 3 -
+    (line.fieldGoalsMade ?? 0) * 3 +
+    (line.kickReturnYards ?? 0) * 0.08 +
+    (line.kickReturnTouchdowns ?? 0) * 6 +
+    (line.puntReturnYards ?? 0) * 0.1 +
+    (line.puntReturnTouchdowns ?? 0) * 6 -
     (line.interceptions ?? 0) * 2
   );
 }

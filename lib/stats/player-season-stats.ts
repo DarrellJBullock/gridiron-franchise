@@ -17,6 +17,10 @@ export interface PlayerSeasonStatLine {
   forcedFumbles: number;
   interceptionsMade: number;
   fieldGoalsMade: number;
+  kickReturnYards: number;
+  kickReturnTouchdowns: number;
+  puntReturnYards: number;
+  puntReturnTouchdowns: number;
 }
 
 const EMPTY_LINE: Omit<PlayerSeasonStatLine, "seasonId" | "seasonName" | "year" | "gamesPlayed"> = {
@@ -32,6 +36,10 @@ const EMPTY_LINE: Omit<PlayerSeasonStatLine, "seasonId" | "seasonName" | "year" 
   forcedFumbles: 0,
   interceptionsMade: 0,
   fieldGoalsMade: 0,
+  kickReturnYards: 0,
+  kickReturnTouchdowns: 0,
+  puntReturnYards: 0,
+  puntReturnTouchdowns: 0,
 };
 
 /** Per-season stat lines for a player, newest season first, plus a career total. */
@@ -70,6 +78,10 @@ export async function getPlayerSeasonStats(playerId: string): Promise<{
     line.forcedFumbles += row.forcedFumbles;
     line.interceptionsMade += row.interceptionsMade;
     line.fieldGoalsMade += row.fieldGoalsMade;
+    line.kickReturnYards += row.kickReturnYards;
+    line.kickReturnTouchdowns += row.kickReturnTouchdowns;
+    line.puntReturnYards += row.puntReturnYards;
+    line.puntReturnTouchdowns += row.puntReturnTouchdowns;
     bySeasonId.set(key, line);
   }
 
@@ -93,6 +105,10 @@ export async function getPlayerSeasonStats(playerId: string): Promise<{
       forcedFumbles: totals.forcedFumbles + s.forcedFumbles,
       interceptionsMade: totals.interceptionsMade + s.interceptionsMade,
       fieldGoalsMade: totals.fieldGoalsMade + s.fieldGoalsMade,
+      kickReturnYards: totals.kickReturnYards + s.kickReturnYards,
+      kickReturnTouchdowns: totals.kickReturnTouchdowns + s.kickReturnTouchdowns,
+      puntReturnYards: totals.puntReturnYards + s.puntReturnYards,
+      puntReturnTouchdowns: totals.puntReturnTouchdowns + s.puntReturnTouchdowns,
     }),
     { gamesPlayed: 0, ...EMPTY_LINE }
   );

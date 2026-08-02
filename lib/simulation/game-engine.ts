@@ -7,7 +7,7 @@ import type {
 } from "@/types/football";
 import { calculateTeamRatings, type RatedPlayer } from "./team-ratings";
 import { bestPlayerAt, topPlayersAt, PlayerStatAccumulator, selectTopPerformers } from "./player-stats";
-import { generateDrivePlays } from "./play-by-play";
+import { generateDrivePlays, generateReturnPlay } from "./play-by-play";
 
 // This is a franchise-style statistical simulation, not a physics engine.
 // Every drive resolves probabilistically from team ratings; the play-by-play log is
@@ -73,6 +73,7 @@ interface DriveResult {
   turnover: boolean;
   bigPlay: boolean;
   quarter: number;
+  outcome: "touchdown" | "field_goal" | "missed_field_goal" | "punt" | "turnover";
   plays: Omit<PlayByPlayEntry, "sequence">[];
 }
 
@@ -133,7 +134,7 @@ function simulateDrive(
       turnoverType: isInterception ? "interception" : "fumble",
       scoredOnGround: false,
     });
-    return { points: 0, yards, turnover: true, bigPlay: false, quarter, plays };
+    return { points: 0, yards, turnover: true, bigPlay: false, quarter, outcome: "turnover", plays };
   }
 
   const bigPlayChance = clamp(0.16 + diff * 0.0035, 0.05, 0.4);
@@ -218,7 +219,46 @@ function simulateDrive(
     scoredOnGround,
   });
 
-  return { points, yards: driveYards, turnover: false, bigPlay, quarter, plays };
+  return { points, yards: driveYards, turnover: false, bigPlay, quarter, outcome, plays };
+}
+
+interface ReturnResult {
+  plays: Omit<PlayByPlayEntry, "sequence">[];
+  points: number;
+}
+
+/**
+ * A kickoff return (after a score) or punt return (after a punt), credited
+ * to whichever team didn't just have the ball. Not simulated after a missed
+ * field goal or a turnover — those already change possession on the spot.
+ */
+function simulateReturn(
+  type: "kick" | "punt",
+  receivingTeam: TeamContext,
+  quarter: number,
+  driveNumber: number,
+  stats: PlayerStatAccumulator
+): ReturnResult {
+  const returner = pickWeighted([...receivingTeam.receivers, ...receivingTeam.rbs]);
+  const isTouchdown = Math.random() < (type === "kick" ? 0.02 : 0.015);
+  const yards = isTouchdown ? randomInt(85, 100) : type === "kick" ? randomInt(15, 35) : randomInt(0, 14);
+
+  if (returner) {
+    if (type === "kick") stats.addKickReturn(returner, yards, isTouchdown);
+    else stats.addPuntReturn(returner, yards, isTouchdown);
+  }
+
+  const plays = generateReturnPlay({
+    quarter,
+    driveNumber,
+    returnType: type,
+    receivingAbbr: receivingTeam.abbr,
+    returner,
+    yards,
+    isTouchdown,
+  });
+
+  return { plays, points: isTouchdown ? 7 : 0 };
 }
 
 function formatClock(totalSeconds: number): string {
@@ -315,6 +355,35 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
       if (result.bigPlay) {
         bigPlays.push({ team: offense.name, quarter, yards: result.yards });
       }
+
+      // A made score gets returned by the team who didn't score (kickoff);
+      // a punt gets returned by the team who didn't punt. Missed field
+      // goals and turnovers already change possession on the spot, so
+      // there's no return to simulate for those.
+      if (result.outcome === "touchdown" || result.outcome === "field_goal" || result.outcome === "punt") {
+        const receivingTeam = homeStarts ? away : home;
+        driveNumber += 1;
+        const returnResult = simulateReturn(
+          result.outcome === "punt" ? "punt" : "kick",
+          receivingTeam,
+          quarter,
+          driveNumber,
+          stats
+        );
+        allPlays.push(...returnResult.plays);
+        if (returnResult.points > 0) {
+          if (receivingTeam === home) {
+            homeScore += returnResult.points;
+            quarterScores.home[quarter - 1] += returnResult.points;
+          } else {
+            awayScore += returnResult.points;
+            quarterScores.away[quarter - 1] += returnResult.points;
+          }
+          if (returnResult.points >= biggestSwing.delta) {
+            biggestSwing = { quarter, delta: returnResult.points, team: receivingTeam.name };
+          }
+        }
+      }
     }
   }
 
@@ -325,7 +394,7 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
   // happen in practice, but the loop still terminates either way.
   const maxOvertimeDrives = 30;
   let overtimeDrives = 0;
-  let overtimeWinner: { team: string; points: number } | null = null;
+  let overtimeWinner: { team: string; points: number; viaReturn: boolean } | null = null;
   if (homeScore === awayScore) {
     quarterScores.home.push(0);
     quarterScores.away.push(0);
@@ -358,10 +427,30 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
         awayScore += result.points;
         quarterScores.away[4] += result.points;
       }
-      overtimeWinner = { team: offense.name, points: result.points };
+      overtimeWinner = { team: offense.name, points: result.points, viaReturn: false };
     }
     if (result.bigPlay) {
       bigPlays.push({ team: offense.name, quarter: 5, yards: result.yards });
+    }
+
+    // A made score already ends sudden death, so there's no kickoff to
+    // return — only a punt keeps overtime going, giving the other team a
+    // punt-return shot (which, if it scores, ends it right there).
+    if (result.outcome === "punt") {
+      const receivingTeam = homeStarts ? away : home;
+      driveNumber += 1;
+      const returnResult = simulateReturn("punt", receivingTeam, 5, driveNumber, stats);
+      allPlays.push(...returnResult.plays);
+      if (returnResult.points > 0) {
+        if (receivingTeam === home) {
+          homeScore += returnResult.points;
+          quarterScores.home[4] += returnResult.points;
+        } else {
+          awayScore += returnResult.points;
+          quarterScores.away[4] += returnResult.points;
+        }
+        overtimeWinner = { team: receivingTeam.name, points: returnResult.points, viaReturn: true };
+      }
     }
   }
 
@@ -393,7 +482,9 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
 
   const biggestBigPlay = bigPlays.sort((a, b) => b.yards - a.yards)[0];
   const turningPoint = overtimeWinner
-    ? `${overtimeWinner.team} won it with a ${overtimeWinner.points}-point drive in sudden-death overtime.`
+    ? overtimeWinner.viaReturn
+      ? `${overtimeWinner.team} won it with a punt-return touchdown in sudden-death overtime.`
+      : `${overtimeWinner.team} won it with a ${overtimeWinner.points}-point drive in sudden-death overtime.`
     : biggestBigPlay
       ? `A ${biggestBigPlay.yards}-yard explosive play by ${biggestBigPlay.team} in the Q${biggestBigPlay.quarter} shifted momentum.`
       : `${biggestSwing.team || home.name} took control with a scoring drive in the Q${biggestSwing.quarter}.`;

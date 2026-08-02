@@ -53,6 +53,7 @@ export default async function StatsPage({
         <StatLeaderTable title="Sack Leaders" unit="Sacks" rows={leaders.sacks} />
         <StatLeaderTable title="Interception Leaders" unit="INTs" rows={leaders.interceptions} />
         <StatLeaderTable title="Kicking Leaders" unit="FG Made" rows={leaders.kicking} />
+        <StatLeaderTable title="Return Leaders" unit="Return Yards" rows={leaders.returns} />
       </div>
     </div>
   );

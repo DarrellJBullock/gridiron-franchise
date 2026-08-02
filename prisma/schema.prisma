@@ -280,6 +280,10 @@ model GamePlayerStats {
   sacks                Float  @default(0)
   forcedFumbles        Int    @default(0)
   fieldGoalsMade       Int    @default(0)
+  kickReturnYards      Int    @default(0)
+  kickReturnTouchdowns Int    @default(0)
+  puntReturnYards      Int    @default(0)
+  puntReturnTouchdowns Int    @default(0)
 
   game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)

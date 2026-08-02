@@ -38,6 +38,9 @@ function playIcon(playType: string) {
       return "🚫";
     case "punt":
       return "👢";
+    case "kick_return":
+    case "punt_return":
+      return "🔄";
     case "interception":
     case "fumble":
       return "⚠️";

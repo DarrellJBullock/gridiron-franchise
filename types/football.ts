@@ -241,6 +241,10 @@ export interface GamePlayerStatLine {
   sacks?: number;
   forcedFumbles?: number;
   fieldGoalsMade?: number;
+  kickReturnYards?: number;
+  kickReturnTouchdowns?: number;
+  puntReturnYards?: number;
+  puntReturnTouchdowns?: number;
 }
 
 export type PlayType =
@@ -253,7 +257,9 @@ export type PlayType =
   | "touchdown"
   | "extra_point"
   | "interception"
-  | "fumble";
+  | "fumble"
+  | "kick_return"
+  | "punt_return";
 
 export interface PlayByPlayEntry {
   sequence: number;

@@ -20,6 +20,10 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: "forcedFumbles", label: "FF" },
   { key: "interceptionsMade", label: "Def INT" },
   { key: "fieldGoalsMade", label: "FG" },
+  { key: "kickReturnYards", label: "KR Yds" },
+  { key: "kickReturnTouchdowns", label: "KR TD" },
+  { key: "puntReturnYards", label: "PR Yds" },
+  { key: "puntReturnTouchdowns", label: "PR TD" },
 ];
 
 interface PlayerSeasonStatsTableProps {
