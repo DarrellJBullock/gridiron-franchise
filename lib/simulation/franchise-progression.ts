@@ -91,9 +91,6 @@ export async function advanceFranchise(leagueId: string): Promise<AdvanceFranchi
     throw new Error("Complete the current season before advancing to the next one.");
   }
 
-  const previousStandings = await prisma.standing.findMany({ where: { seasonId: latestSeason.id } });
-  const divisionByTeamId = new Map(previousStandings.map((s) => [s.teamId, s.division]));
-
   const teams = await prisma.team.findMany({
     where: { leagueId },
     include: { players: { where: { retired: false }, include: { ratings: true } } },
@@ -247,7 +244,7 @@ export async function advanceFranchise(leagueId: string): Promise<AdvanceFranchi
       standings: {
         create: teams.map((t) => ({
           teamId: t.id,
-          division: divisionByTeamId.get(t.id) ?? "Atlantic",
+          division: t.division,
         })),
       },
       games: {
