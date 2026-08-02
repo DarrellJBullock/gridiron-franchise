@@ -257,6 +257,7 @@ model GameTeamStats {
   firstDowns            Int    @default(0)
   thirdDownConversions  String @default("0/0")
   timeOfPossession      String @default("00:00")
+  penalties             String @default("0-0")
 
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)

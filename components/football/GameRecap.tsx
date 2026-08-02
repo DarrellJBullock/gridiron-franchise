@@ -21,6 +21,7 @@ const STAT_ROWS: { key: keyof GameTeamStatLine; label: string }[] = [
   { key: "firstDowns", label: "First Downs" },
   { key: "thirdDownConversions", label: "3rd Down Conv." },
   { key: "turnovers", label: "Turnovers" },
+  { key: "penalties", label: "Penalties" },
   { key: "timeOfPossession", label: "Time of Possession" },
 ];
 

@@ -44,6 +44,10 @@ function playIcon(playType: string) {
     case "interception":
     case "fumble":
       return "⚠️";
+    case "penalty":
+      return "🚩";
+    case "sack":
+      return "💥";
     default:
       return "▪️";
   }

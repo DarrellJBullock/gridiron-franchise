@@ -223,6 +223,7 @@ export interface GameTeamStatLine {
   firstDowns: number;
   thirdDownConversions: string;
   timeOfPossession: string;
+  penalties: string;
 }
 
 export interface GamePlayerStatLine {
@@ -259,7 +260,9 @@ export type PlayType =
   | "interception"
   | "fumble"
   | "kick_return"
-  | "punt_return";
+  | "punt_return"
+  | "penalty"
+  | "sack";
 
 export interface PlayByPlayEntry {
   sequence: number;
