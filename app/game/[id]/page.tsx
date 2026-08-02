@@ -7,6 +7,7 @@ import { GameRecap } from "@/components/football/GameRecap";
 import { PlayByPlayLog } from "@/components/football/PlayByPlayLog";
 import { TopPerformers } from "@/components/simulation/TopPerformers";
 import { selectTopPerformers } from "@/lib/simulation/player-stats";
+import { LinkButton } from "@/components/ui/Button";
 import type { GamePlayerStatLine } from "@/types/football";
 
 export default async function GameDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -51,6 +52,12 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="flex flex-col gap-8">
+      <div className="flex justify-end">
+        <LinkButton href={`/game/${game.id}/live`} variant="secondary" size="sm">
+          🎬 Watch Graphical Replay
+        </LinkButton>
+      </div>
+
       <Scoreboard
         home={{
           id: game.homeTeam.id,

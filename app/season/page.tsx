@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -344,6 +345,47 @@ export default function SeasonPage() {
 
           {bracket && (
             <PlayoffBracket conferences={bracket.conferences} leagueChampionship={bracket.leagueChampionship} />
+          )}
+
+          {regularSeasonGames.filter((g) => g.status === "SCHEDULED" && g.week === season.currentWeek + 1).length > 0 && (
+            <section>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                Upcoming Games — Week {season.currentWeek + 1}
+              </p>
+              <Card className="divide-y divide-border-line p-0">
+                {regularSeasonGames
+                  .filter((g) => g.status === "SCHEDULED" && g.week === season.currentWeek + 1)
+                  .map((g) => (
+                    <div key={g.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                      <div className="flex items-center gap-2 text-sm">
+                        <TeamLogo
+                          seed={g.awayTeam.id}
+                          primaryColor={g.awayTeam.primaryColor}
+                          secondaryColor={g.awayTeam.secondaryColor}
+                          abbreviation={g.awayTeam.abbreviation}
+                          size={22}
+                        />
+                        <span className="text-text-primary">{g.awayTeam.abbreviation}</span>
+                        <span className="text-text-faint">@</span>
+                        <TeamLogo
+                          seed={g.homeTeam.id}
+                          primaryColor={g.homeTeam.primaryColor}
+                          secondaryColor={g.homeTeam.secondaryColor}
+                          abbreviation={g.homeTeam.abbreviation}
+                          size={22}
+                        />
+                        <span className="text-text-primary">{g.homeTeam.abbreviation}</span>
+                      </div>
+                      <Link
+                        href={`/game/${g.id}/live`}
+                        className="text-xs font-semibold text-accent hover:underline"
+                      >
+                        🎬 Watch Live
+                      </Link>
+                    </div>
+                  ))}
+              </Card>
+            </section>
           )}
 
           {regularSeasonGames.filter((g) => g.status === "FINAL").length > 0 && (

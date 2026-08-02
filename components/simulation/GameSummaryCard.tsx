@@ -23,8 +23,8 @@ interface GameSummaryCardProps {
 
 export function GameSummaryCard({ gameId, home, away, homeScore, awayScore, week, summary }: GameSummaryCardProps) {
   return (
-    <Link href={`/game/${gameId}`}>
-      <Card className="p-4 transition-colors hover:border-accent/50">
+    <Card className="p-4 transition-colors hover:border-accent/50">
+      <Link href={`/game/${gameId}`} className="block">
         <div className="flex items-center justify-between">
           {week !== undefined && <Badge tone="neutral">Week {week}</Badge>}
           <Badge tone="accent">FINAL</Badge>
@@ -62,7 +62,13 @@ export function GameSummaryCard({ gameId, home, away, homeScore, awayScore, week
           <span className="font-black tabular-nums text-text-primary">{homeScore}</span>
         </div>
         {summary && <p className="mt-3 line-clamp-2 text-xs text-text-faint">{summary}</p>}
-      </Card>
-    </Link>
+      </Link>
+      <Link
+        href={`/game/${gameId}/live`}
+        className="mt-3 block text-center text-xs font-semibold text-accent hover:underline"
+      >
+        🎬 Watch Graphical Replay
+      </Link>
+    </Card>
   );
 }

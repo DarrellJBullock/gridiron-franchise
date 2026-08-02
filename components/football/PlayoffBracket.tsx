@@ -35,7 +35,19 @@ function MatchupRow({ matchup }: { matchup: PlayoffMatchup }) {
     </div>
   );
 
-  return matchup.status === "FINAL" ? <Link href={`/game/${matchup.gameId}`}>{content}</Link> : content;
+  if (matchup.status !== "FINAL") return content;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Link href={`/game/${matchup.gameId}`}>{content}</Link>
+      <Link
+        href={`/game/${matchup.gameId}/live`}
+        className="text-center text-[11px] font-semibold text-accent hover:underline"
+      >
+        🎬 Watch Replay
+      </Link>
+    </div>
+  );
 }
 
 function ConferencePanel({ bracket }: { bracket: ConferenceBracket }) {

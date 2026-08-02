@@ -66,7 +66,7 @@ function MatchupInner() {
             ← New Matchup
           </button>
         </div>
-        <LiveGamePlayer gameId={live.gameId} result={live.result} home={homeTeam} away={awayTeam} />
+        <LiveGamePlayer gameId={live.gameId} plays={live.result.plays} home={homeTeam} away={awayTeam} />
       </div>
     );
   }

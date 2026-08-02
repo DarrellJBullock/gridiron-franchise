@@ -4,13 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
-import type { PlayByPlayEntry, SimulatedGameResult } from "@/types/football";
+import type { PlayByPlayEntry } from "@/types/football";
 
 interface LiveGamePlayerProps {
   gameId: string;
-  result: SimulatedGameResult;
+  plays: PlayByPlayEntry[];
   home: { abbreviation: string; name: string; primaryColor: string; secondaryColor: string };
   away: { abbreviation: string; name: string; primaryColor: string; secondaryColor: string };
+  /** Live simulations auto-start playing; replays of an already-decided game start paused. */
+  autoPlay?: boolean;
 }
 
 const SPEEDS = { "1x": 1400, "2x": 700, "4x": 300 } as const;
@@ -81,11 +83,10 @@ function yardMarkerLabel(distanceFromLeftGoal: number): string {
   return fromNearestGoal === 0 || fromNearestGoal === 100 ? "" : String(fromNearestGoal);
 }
 
-export function LiveGamePlayer({ gameId, result, home, away }: LiveGamePlayerProps) {
+export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: LiveGamePlayerProps) {
   const router = useRouter();
-  const plays = result.plays;
   const [index, setIndex] = useState(-1);
-  const [playing, setPlaying] = useState(true);
+  const [playing, setPlaying] = useState(autoPlay);
   const [speed, setSpeed] = useState<SpeedKey>("1x");
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
