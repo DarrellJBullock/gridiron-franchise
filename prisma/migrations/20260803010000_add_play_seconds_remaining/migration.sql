@@ -1,0 +1,1 @@
+ALTER TABLE "GamePlay" ADD COLUMN "secondsRemaining" INTEGER NOT NULL DEFAULT 900;

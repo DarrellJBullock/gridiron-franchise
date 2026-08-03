@@ -2,6 +2,7 @@ import type {
   GamePlayerStatLine,
   GameTeamStatLine,
   PlayByPlayEntry,
+  PlayType,
   QuarterScores,
   SimulatedGameResult,
 } from "@/types/football";
@@ -120,7 +121,7 @@ function injuryPlay(
   quarter: number,
   driveNumber: number,
   yardLine: number
-): Omit<PlayByPlayEntry, "sequence"> {
+): Omit<PlayByPlayEntry, "sequence" | "secondsRemaining"> {
   return {
     quarter,
     driveNumber,
@@ -143,7 +144,7 @@ interface DriveResult {
   bigPlay: boolean;
   bigPlayYards: number;
   quarter: number;
-  plays: Omit<PlayByPlayEntry, "sequence">[];
+  plays: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[];
   outcome: "touchdown" | "field_goal" | "missed_field_goal" | "punt" | "turnover";
   firstDowns: number;
   penaltyCount: number;
@@ -183,7 +184,7 @@ function simulateDrive(
   const defEff = defense.defenseRating;
   const diff = offEff - defEff;
 
-  const plays: Omit<PlayByPlayEntry, "sequence">[] = [];
+  const plays: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[] = [];
   const state: DriveState = { down: 1, distance: 10, yardLine: randomInt(18, 32) };
 
   let points = 0;
@@ -687,13 +688,36 @@ function formatClock(totalSeconds: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+// Approximate per-play game-clock runoff, used to stamp each play with a
+// quarter clock for display — not a full clock-stop rules engine, just
+// enough variation (incompletions/kicks burn little time, scrimmage plays
+// burn a full snap-to-snap cycle) that the clock reads believably.
+function timeForPlay(playType: PlayType): number {
+  switch (playType) {
+    case "incomplete":
+      return randomInt(5, 12);
+    case "penalty":
+      return randomInt(5, 15);
+    case "field_goal":
+    case "missed_field_goal":
+    case "extra_point":
+    case "punt":
+      return randomInt(5, 15);
+    case "kick_return":
+    case "punt_return":
+      return randomInt(12, 22);
+    default:
+      return randomInt(20, 38);
+  }
+}
+
 function simulateSpecialTeamsReturn(
   type: "kick" | "punt",
   receivingTeam: TeamContext,
   quarter: number,
   driveNumber: number,
   stats: PlayerStatAccumulator
-): { plays: Omit<PlayByPlayEntry, "sequence">[]; points: number } {
+): { plays: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[]; points: number } {
   const returner = pickWeighted([...receivingTeam.receivers, ...receivingTeam.rbs]);
   const tdChance = type === "kick" ? 0.02 : 0.015;
   const isTouchdown = Math.random() < tdChance;
@@ -769,7 +793,7 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
   const drivesPerQuarterPerTeam = 3;
   const bigPlays: { team: string; quarter: number; yards: number }[] = [];
   let biggestSwing = { quarter: 1, delta: 0, team: "" };
-  const allPlays: Omit<PlayByPlayEntry, "sequence">[] = [];
+  const allPlays: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[] = [];
   let driveNumber = 0;
 
   function processDrive(offense: TeamContext, defense: TeamContext, offenseIsHome: boolean, quarter: number) {
@@ -815,7 +839,7 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
     // Kickoff return (after any score) or punt return (after a punt),
     // credited to whichever team is about to receive.
     const receivingTeam = offenseIsHome ? away : home;
-    let returnResult: { plays: Omit<PlayByPlayEntry, "sequence">[]; points: number } | null = null;
+    let returnResult: { plays: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[]; points: number } | null = null;
     if (result.points === 7 || result.points === 3) {
       driveNumber += 1;
       returnResult = simulateSpecialTeamsReturn("kick", receivingTeam, quarter, driveNumber, stats);
@@ -918,7 +942,23 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
   const awayRunHeavy = awayLine.rushingYards >= awayLine.passingYards;
   const playStyleSummary = `${home.name} leaned ${homeRunHeavy ? "on the ground game" : "on the passing attack"} (${homeLine.rushingYards} rush / ${homeLine.passingYards} pass yds) while ${away.name} ${awayRunHeavy ? "pounded the rock" : "attacked through the air"} (${awayLine.rushingYards} rush / ${awayLine.passingYards} pass yds).`;
 
-  const plays: PlayByPlayEntry[] = allPlays.map((play, index) => ({ ...play, sequence: index + 1 }));
+  // Stamp a quarter clock onto every play in one pass at the end, rather
+  // than threading a mutable clock through every push site in
+  // simulateDrive — the clock resets to 15:00 (10:00 in OT) whenever the
+  // quarter number changes, and just clamps at 0:00 if the plays in a
+  // quarter happen to run past it (drives are still allocated a fixed
+  // count per quarter, not gated on the clock).
+  let clockQuarter = 0;
+  let clockSeconds = 0;
+  const plays: PlayByPlayEntry[] = allPlays.map((play, index) => {
+    if (play.quarter !== clockQuarter) {
+      clockQuarter = play.quarter;
+      clockSeconds = clockQuarter > 4 ? 600 : 900;
+    }
+    const secondsRemaining = Math.max(0, Math.round(clockSeconds));
+    clockSeconds = Math.max(0, clockSeconds - timeForPlay(play.playType));
+    return { ...play, sequence: index + 1, secondsRemaining };
+  });
 
   return {
     homeScore,

@@ -89,6 +89,7 @@ export async function persistSimulatedGame({
         yards: play.yards,
         isScoring: play.isScoring,
         isTurnover: play.isTurnover,
+        secondsRemaining: play.secondsRemaining,
       })),
     });
   }

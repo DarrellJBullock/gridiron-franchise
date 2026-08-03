@@ -278,6 +278,7 @@ export interface PlayByPlayEntry {
   yards: number;
   isScoring: boolean;
   isTurnover: boolean;
+  secondsRemaining: number;
 }
 
 export interface SimulatedGameResult {

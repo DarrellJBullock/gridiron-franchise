@@ -240,6 +240,7 @@ model GamePlay {
   yards         Int
   isScoring     Boolean @default(false)
   isTurnover    Boolean @default(false)
+  secondsRemaining Int  @default(900)
 
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 

@@ -39,6 +39,12 @@ function quarterLabel(quarter: number) {
   return quarter > 4 ? "OT" : `Q${quarter}`;
 }
 
+function formatGameClock(secondsRemaining: number) {
+  const minutes = Math.floor(secondsRemaining / 60);
+  const seconds = secondsRemaining % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 function playIcon(playType: PlayByPlayEntry["playType"]) {
   switch (playType) {
     case "run":
@@ -208,6 +214,9 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
           <span className="rounded bg-surface-hover px-2 py-1">{quarterLabel(current.quarter)}</span>
+          <span className="rounded bg-surface-hover px-2 py-1 tabular-nums text-accent">
+            {formatGameClock(current.secondsRemaining)}
+          </span>
           <span className="rounded bg-surface-hover px-2 py-1">
             {index < 0 ? "Kickoff" : `${["", "1st", "2nd", "3rd", "4th"][current.down] ?? current.down} & ${current.distance}`}
           </span>

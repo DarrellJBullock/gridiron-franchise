@@ -14,10 +14,17 @@ export interface PlayByPlayRow {
   yards: number;
   isScoring: boolean;
   isTurnover: boolean;
+  secondsRemaining: number;
 }
 
 function quarterLabel(quarter: number) {
   return quarter > 4 ? "OT" : `Q${quarter}`;
+}
+
+function formatGameClock(secondsRemaining: number) {
+  const minutes = Math.floor(secondsRemaining / 60);
+  const seconds = secondsRemaining % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function playIcon(playType: string) {
@@ -82,6 +89,9 @@ export function PlayByPlayLog({ plays }: { plays: PlayByPlayRow[] }) {
           <div key={drive.driveNumber}>
             <div className="mb-2 flex items-center gap-2">
               <Badge tone="blue">{quarterLabel(drive.quarter)}</Badge>
+              <span className="text-xs font-semibold tabular-nums text-text-faint">
+                {formatGameClock(drive.plays[0].secondsRemaining)}
+              </span>
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                 Drive {drive.driveNumber} — {drive.offenseAbbr} ball
               </p>

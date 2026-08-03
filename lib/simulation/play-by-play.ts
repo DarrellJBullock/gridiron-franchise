@@ -33,10 +33,10 @@ export interface ReturnPlayContext {
 }
 
 /** A kickoff/punt return following a score or punt — a standalone play, not a full drive. */
-export function generateReturnPlay(ctx: ReturnPlayContext): Omit<PlayByPlayEntry, "sequence">[] {
+export function generateReturnPlay(ctx: ReturnPlayContext): Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[] {
   const label = ctx.returnType === "kick" ? "kickoff" : "punt";
   const playType: PlayType = ctx.returnType === "kick" ? "kick_return" : "punt_return";
-  const entries: Omit<PlayByPlayEntry, "sequence">[] = [];
+  const entries: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[] = [];
 
   entries.push({
     quarter: ctx.quarter,
