@@ -32,6 +32,7 @@ const NAV_SECTIONS: { label: string; items: { href: string; label: string; icon:
       { href: "/season", label: "Season", icon: "📅" },
       { href: "/standings", label: "Standings", icon: "📊" },
       { href: "/stats", label: "Stat Leaders", icon: "🏆" },
+      { href: "/hall-of-fame", label: "Hall of Fame", icon: "🏛️" },
     ],
   },
   {
