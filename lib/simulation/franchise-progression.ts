@@ -215,6 +215,7 @@ export async function advanceFranchise(leagueId: string): Promise<AdvanceFranchi
       lastName: p.lastName,
       position: p.position,
       overall: p.overall,
+      injury: 70,
     }));
     const teamRatings = calculateTeamRatings(ratedPlayers);
     await prisma.team.update({

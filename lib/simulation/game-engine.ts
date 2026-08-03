@@ -6,7 +6,7 @@ import type {
   SimulatedGameResult,
 } from "@/types/football";
 import { calculateTeamRatings, type RatedPlayer } from "./team-ratings";
-import { bestPlayerAt, topPlayersAt, PlayerStatAccumulator, selectTopPerformers } from "./player-stats";
+import { topPlayersAt, PlayerStatAccumulator, selectTopPerformers } from "./player-stats";
 import { shortName, downLabel, fieldPosition, generateReturnPlay } from "./play-by-play";
 
 // A franchise-style statistical simulation, not a physics engine — but every
@@ -33,10 +33,14 @@ interface TeamContext {
   defenseRating: number;
   specialTeamsRating: number;
   qb?: RatedPlayer;
+  qbDepth: RatedPlayer[];
   rbs: RatedPlayer[];
   receivers: RatedPlayer[];
   kicker?: RatedPlayer;
+  kickerDepth: RatedPlayer[];
   defenders: RatedPlayer[];
+  // Player ids ruled out for the rest of this game by an in-game injury.
+  injured: Set<string>;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -54,6 +58,8 @@ function pickWeighted<T>(items: T[]): T | undefined {
 
 function buildContext(name: string, abbr: string, players: RatedPlayer[]): TeamContext {
   const ratings = calculateTeamRatings(players);
+  const qbPool = topPlayersAt(players, ["QB"], 3);
+  const kickerPool = topPlayersAt(players, ["K"], 2);
   return {
     name,
     abbr,
@@ -61,11 +67,56 @@ function buildContext(name: string, abbr: string, players: RatedPlayer[]): TeamC
     offenseRating: ratings.offenseRating,
     defenseRating: ratings.defenseRating,
     specialTeamsRating: ratings.specialTeamsRating,
-    qb: bestPlayerAt(players, ["QB"]),
+    qb: qbPool[0],
+    qbDepth: qbPool.slice(1),
     rbs: topPlayersAt(players, ["RB", "FB"], 3),
     receivers: topPlayersAt(players, ["WR", "TE"], 5),
-    kicker: bestPlayerAt(players, ["K"]),
+    kicker: kickerPool[0],
+    kickerDepth: kickerPool.slice(1),
     defenders: topPlayersAt(players, ["LE", "RE", "DT", "LOLB", "MLB", "ROLB", "CB", "FS", "SS"], 9),
+    injured: new Set(),
+  };
+}
+
+// Higher `injury` (durability, 0-100) means fewer in-game injuries. Chance
+// scales from 0.6x baseChance (durability 100) up to 1.6x (durability 0).
+function rollInjury(player: RatedPlayer | undefined, baseChance: number): boolean {
+  if (!player) return false;
+  const durability = clamp(player.injury ?? 70, 0, 100);
+  return Math.random() < clamp(baseChance * (1.6 - durability / 100), 0, 0.05);
+}
+
+// Removes an injured player from every role pool so subsequent plays fall
+// to the next player up — a backup RB, third receiver, or backup QB/K.
+function sidelinePlayer(team: TeamContext, player: RatedPlayer) {
+  team.injured.add(player.id);
+  team.rbs = team.rbs.filter((p) => p.id !== player.id);
+  team.receivers = team.receivers.filter((p) => p.id !== player.id);
+  team.defenders = team.defenders.filter((p) => p.id !== player.id);
+  if (team.qb?.id === player.id) team.qb = team.qbDepth.shift();
+  if (team.kicker?.id === player.id) team.kicker = team.kickerDepth.shift();
+}
+
+function injuryPlay(
+  possessingAbbr: string,
+  injuredTeamAbbr: string,
+  player: RatedPlayer,
+  quarter: number,
+  driveNumber: number,
+  yardLine: number
+): Omit<PlayByPlayEntry, "sequence"> {
+  return {
+    quarter,
+    driveNumber,
+    offenseAbbr: possessingAbbr,
+    down: 0,
+    distance: 0,
+    yardLine: Math.round(clamp(yardLine, 1, 99)),
+    playType: "injury",
+    description: `🏥 ${shortName(player, "A player")} (${injuredTeamAbbr}) is injured on the play and won't return.`,
+    yards: 0,
+    isScoring: false,
+    isTurnover: false,
   };
 }
 
@@ -166,6 +217,12 @@ function simulateDrive(
     });
   }
 
+  function checkInjury(team: TeamContext, player: RatedPlayer | undefined, baseChance: number) {
+    if (!player || !rollInjury(player, baseChance)) return;
+    sidelinePlayer(team, player);
+    plays.push(injuryPlay(offense.abbr, team.abbr, player, quarter, driveNumber, state.yardLine));
+  }
+
   let safety = 0;
   while (!driveOver && safety < 30) {
     safety += 1;
@@ -201,6 +258,7 @@ function simulateDrive(
           isScoring: made,
           isTurnover: false,
         });
+        checkInjury(offense, offense.kicker, 0.002);
         driveOver = true;
         break;
       }
@@ -266,6 +324,8 @@ function simulateDrive(
           isScoring: false,
           isTurnover: true,
         });
+        checkInjury(offense, runner, 0.006);
+        checkInjury(defense, defender, 0.006);
         turnover = true;
         outcome = "turnover";
         driveOver = true;
@@ -298,8 +358,9 @@ function simulateDrive(
         bigPlay = true;
         bigPlayYards = Math.max(bigPlayYards, yards);
       }
+      let tackler: RatedPlayer | undefined;
       if (Math.random() < 0.55) {
-        const tackler = pickWeighted(defense.defenders);
+        tackler = pickWeighted(defense.defenders);
         if (tackler && !isTouchdown) stats.addTackle(tackler);
       }
 
@@ -321,6 +382,7 @@ function simulateDrive(
           isScoring: true,
           isTurnover: false,
         });
+        checkInjury(offense, runner, 0.006);
         plays.push({
           quarter,
           driveNumber,
@@ -365,6 +427,8 @@ function simulateDrive(
         isScoring: false,
         isTurnover: false,
       });
+      checkInjury(offense, runner, 0.006);
+      checkInjury(defense, tackler, 0.005);
 
       if (state.down > 4) {
         outcome = "turnover"; // safety net only — 4th down is handled explicitly above
@@ -400,6 +464,8 @@ function simulateDrive(
         isScoring: false,
         isTurnover: false,
       });
+      checkInjury(offense, offense.qb, 0.004);
+      checkInjury(defense, sacker, 0.006);
       if (state.down > 4) {
         outcome = "turnover";
         driveOver = true;
@@ -429,6 +495,8 @@ function simulateDrive(
         isScoring: false,
         isTurnover: true,
       });
+      checkInjury(offense, offense.qb, 0.004);
+      checkInjury(defense, interceptor, 0.004);
       turnover = true;
       outcome = "turnover";
       driveOver = true;
@@ -466,6 +534,7 @@ function simulateDrive(
         isScoring: false,
         isTurnover: false,
       });
+      checkInjury(offense, offense.qb, 0.003);
       if (state.down > 4) {
         outcome = "turnover";
         driveOver = true;
@@ -497,8 +566,9 @@ function simulateDrive(
       bigPlay = true;
       bigPlayYards = Math.max(bigPlayYards, yards);
     }
+    let tackler: RatedPlayer | undefined;
     if (Math.random() < 0.6) {
-      const tackler = pickWeighted(defense.defenders);
+      tackler = pickWeighted(defense.defenders);
       if (tackler && !isTouchdown) stats.addTackle(tackler);
     }
 
@@ -521,6 +591,8 @@ function simulateDrive(
         isScoring: true,
         isTurnover: false,
       });
+      checkInjury(offense, offense.qb, 0.003);
+      checkInjury(offense, receiver, 0.006);
       plays.push({
         quarter,
         driveNumber,
@@ -565,6 +637,9 @@ function simulateDrive(
       isScoring: false,
       isTurnover: false,
     });
+    checkInjury(offense, offense.qb, 0.003);
+    checkInjury(offense, receiver, 0.006);
+    checkInjury(defense, tackler, 0.005);
 
     if (state.down > 4) {
       outcome = "turnover";
@@ -622,6 +697,11 @@ function simulateSpecialTeamsReturn(
     yards,
     isTouchdown,
   });
+
+  if (returner && rollInjury(returner, 0.005)) {
+    sidelinePlayer(receivingTeam, returner);
+    plays.push(injuryPlay(receivingTeam.abbr, receivingTeam.abbr, returner, quarter, driveNumber, yards));
+  }
 
   return { plays, points: isTouchdown ? 7 : 0 };
 }

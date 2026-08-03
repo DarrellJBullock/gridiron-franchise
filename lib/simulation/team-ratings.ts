@@ -6,6 +6,7 @@ export interface RatedPlayer {
   lastName: string;
   position: Position;
   overall: number;
+  injury: number;
 }
 
 const OL_POSITIONS: Position[] = ["LT", "LG", "C", "RG", "RT"];

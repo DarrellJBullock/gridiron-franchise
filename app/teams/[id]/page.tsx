@@ -32,7 +32,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
     ? await prisma.standing.findUnique({ where: { seasonId_teamId: { seasonId: latestSeason.id, teamId: team.id } } })
     : null;
 
-  const ratedPlayers = team.players.map(toRatedPlayer);
+  const ratedPlayers = team.players.map((p) => toRatedPlayer(p));
   const { strengths, weaknesses } = calculateTeamStrengths(ratedPlayers);
   const topPlayers = team.players.slice(0, 5);
   const seasonRecords = await getTeamSeasonRecords(team.id);

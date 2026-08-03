@@ -104,8 +104,14 @@ async function simulateAndPersistPlayoffGame(
   week: number
 ) {
   const [homeTeam, awayTeam] = await Promise.all([
-    prisma.team.findUnique({ where: { id: homeSeed.teamId }, include: { players: { where: { retired: false } } } }),
-    prisma.team.findUnique({ where: { id: awaySeed.teamId }, include: { players: { where: { retired: false } } } }),
+    prisma.team.findUnique({
+      where: { id: homeSeed.teamId },
+      include: { players: { where: { retired: false }, include: { ratings: { where: { ratingName: "injury" } } } } },
+    }),
+    prisma.team.findUnique({
+      where: { id: awaySeed.teamId },
+      include: { players: { where: { retired: false }, include: { ratings: { where: { ratingName: "injury" } } } } },
+    }),
   ]);
   if (!homeTeam || !awayTeam) throw new Error("Playoff team not found");
 
@@ -120,8 +126,8 @@ async function simulateAndPersistPlayoffGame(
     awayTeamName: awayTeam.name,
     homeTeamAbbr: homeTeam.abbreviation,
     awayTeamAbbr: awayTeam.abbreviation,
-    homePlayers: homeTeam.players.map(toRatedPlayer),
-    awayPlayers: awayTeam.players.map(toRatedPlayer),
+    homePlayers: homeTeam.players.map((p) => toRatedPlayer(p, p.ratings)),
+    awayPlayers: awayTeam.players.map((p) => toRatedPlayer(p, p.ratings)),
   });
   let attempts = 1;
   while (result.homeScore === result.awayScore && attempts < 10) {
@@ -130,8 +136,8 @@ async function simulateAndPersistPlayoffGame(
       awayTeamName: awayTeam.name,
       homeTeamAbbr: homeTeam.abbreviation,
       awayTeamAbbr: awayTeam.abbreviation,
-      homePlayers: homeTeam.players.map(toRatedPlayer),
-      awayPlayers: awayTeam.players.map(toRatedPlayer),
+      homePlayers: homeTeam.players.map((p) => toRatedPlayer(p, p.ratings)),
+      awayPlayers: awayTeam.players.map((p) => toRatedPlayer(p, p.ratings)),
     });
     attempts++;
   }

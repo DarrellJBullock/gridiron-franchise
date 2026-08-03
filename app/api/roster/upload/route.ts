@@ -144,7 +144,15 @@ export async function POST(req: Request) {
           },
         });
 
-        ratedPlayers.push({ id: player.id, firstName: player.firstName, lastName: player.lastName, position: player.position, overall: player.overall });
+        const injuryRating = ratingEntries.find((r) => r.ratingName === "injury")?.ratingValue ?? 70;
+        ratedPlayers.push({
+          id: player.id,
+          firstName: player.firstName,
+          lastName: player.lastName,
+          position: player.position,
+          overall: player.overall,
+          injury: injuryRating,
+        });
         const list = byPosition.get(player.position) ?? [];
         list.push({ id: player.id, overall: player.overall });
         byPosition.set(player.position, list);

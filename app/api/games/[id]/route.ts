@@ -58,8 +58,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const game = await prisma.game.findFirst({
     where: { id, homeTeam: { leagueId: league.id } },
     include: {
-      homeTeam: { include: { players: { where: { retired: false } } } },
-      awayTeam: { include: { players: { where: { retired: false } } } },
+      homeTeam: { include: { players: { where: { retired: false }, include: { ratings: { where: { ratingName: "injury" } } } } } },
+      awayTeam: { include: { players: { where: { retired: false }, include: { ratings: { where: { ratingName: "injury" } } } } } },
     },
   });
 
@@ -75,8 +75,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     awayTeamName: game.awayTeam.name,
     homeTeamAbbr: game.homeTeam.abbreviation,
     awayTeamAbbr: game.awayTeam.abbreviation,
-    homePlayers: game.homeTeam.players.map(toRatedPlayer),
-    awayPlayers: game.awayTeam.players.map(toRatedPlayer),
+    homePlayers: game.homeTeam.players.map((p) => toRatedPlayer(p, p.ratings)),
+    awayPlayers: game.awayTeam.players.map((p) => toRatedPlayer(p, p.ratings)),
   });
 
   await persistSimulatedGame({

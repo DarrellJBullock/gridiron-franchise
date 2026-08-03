@@ -27,7 +27,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Team not found" }, { status: 404 });
   }
 
-  const ratedPlayers = team.players.map(toRatedPlayer);
+  const ratedPlayers = team.players.map((p) => toRatedPlayer(p));
   const strengths = calculateTeamStrengths(ratedPlayers);
 
   const latestSeason = await prisma.season.findFirst({

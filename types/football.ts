@@ -262,7 +262,8 @@ export type PlayType =
   | "kick_return"
   | "punt_return"
   | "penalty"
-  | "sack";
+  | "sack"
+  | "injury";
 
 export interface PlayByPlayEntry {
   sequence: number;

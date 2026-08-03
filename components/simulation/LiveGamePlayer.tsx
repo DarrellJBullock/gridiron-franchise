@@ -67,6 +67,8 @@ function playIcon(playType: PlayByPlayEntry["playType"]) {
       return "🚩";
     case "sack":
       return "💥";
+    case "injury":
+      return "🏥";
     default:
       return "▪️";
   }
@@ -287,7 +289,9 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
                   ? "text-sm font-semibold text-danger"
                   : current.playType === "penalty"
                     ? "text-sm font-semibold text-yellow-400"
-                    : "text-sm text-text-primary"
+                    : current.playType === "injury"
+                      ? "text-sm font-semibold text-orange-400"
+                      : "text-sm text-text-primary"
           }
         >
           {index < 0 ? "Ready to kick off." : current.description}

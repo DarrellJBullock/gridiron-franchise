@@ -10,13 +10,15 @@ export function toRatingMap(ratings: PlayerRating[]): RatingMap {
   return map;
 }
 
-export function toRatedPlayer(player: Player): RatedPlayer {
+export function toRatedPlayer(player: Player, ratings: PlayerRating[] = []): RatedPlayer {
+  const injuryRating = ratings.find((r) => r.ratingName === "injury")?.ratingValue;
   return {
     id: player.id,
     firstName: player.firstName,
     lastName: player.lastName,
     position: player.position,
     overall: player.overall,
+    injury: injuryRating ?? 70,
   };
 }
 

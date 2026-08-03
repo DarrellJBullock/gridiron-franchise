@@ -133,6 +133,7 @@ function generateTeamRoster(teamId: string, quality: number, usedNames: Set<stri
         lastName: attrs.lastName,
         position: slot.position,
         overall: attrs.overall,
+        injury: attrs.ratings.injury ?? 70,
       });
     }
   }

@@ -48,6 +48,8 @@ function playIcon(playType: string) {
       return "🚩";
     case "sack":
       return "💥";
+    case "injury":
+      return "🏥";
     default:
       return "▪️";
   }
@@ -94,7 +96,9 @@ export function PlayByPlayLog({ plays }: { plays: PlayByPlayRow[] }) {
                         ? "font-semibold text-accent"
                         : play.isTurnover
                           ? "font-semibold text-danger"
-                          : "text-text-primary"
+                          : play.playType === "injury"
+                            ? "font-semibold text-orange-400"
+                            : "text-text-primary"
                     }
                   >
                     {play.description}

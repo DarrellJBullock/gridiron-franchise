@@ -12,8 +12,8 @@ export async function simulateSeasonWeek(seasonId: string) {
   const scheduledGames = await prisma.game.findMany({
     where: { seasonId, week: nextWeek, status: "SCHEDULED" },
     include: {
-      homeTeam: { include: { players: { where: { retired: false } } } },
-      awayTeam: { include: { players: { where: { retired: false } } } },
+      homeTeam: { include: { players: { where: { retired: false }, include: { ratings: { where: { ratingName: "injury" } } } } } },
+      awayTeam: { include: { players: { where: { retired: false }, include: { ratings: { where: { ratingName: "injury" } } } } } },
     },
   });
 
@@ -23,8 +23,8 @@ export async function simulateSeasonWeek(seasonId: string) {
       awayTeamName: game.awayTeam.name,
       homeTeamAbbr: game.homeTeam.abbreviation,
       awayTeamAbbr: game.awayTeam.abbreviation,
-      homePlayers: game.homeTeam.players.map(toRatedPlayer),
-      awayPlayers: game.awayTeam.players.map(toRatedPlayer),
+      homePlayers: game.homeTeam.players.map((p) => toRatedPlayer(p, p.ratings)),
+      awayPlayers: game.awayTeam.players.map((p) => toRatedPlayer(p, p.ratings)),
     });
     await persistSimulatedGame({
       gameId: game.id,
