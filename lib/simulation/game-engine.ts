@@ -73,7 +73,18 @@ function buildContext(name: string, abbr: string, players: RatedPlayer[]): TeamC
     receivers: topPlayersAt(players, ["WR", "TE"], 5),
     kicker: kickerPool[0],
     kickerDepth: kickerPool.slice(1),
-    defenders: topPlayersAt(players, ["LE", "RE", "DT", "LOLB", "MLB", "ROLB", "CB", "FS", "SS"], 9),
+    // Built group by group (not one flat top-9-by-overall pool) so a team
+    // whose DL/LB happen to rate lower than their secondary still gets
+    // those players into the rotation — otherwise they'd never be picked
+    // for a tackle/sack and would finish every season with zero stats.
+    // Ordered DL, then LB, then DB, so the sack pool below (which reads
+    // the front of this list) stays realistic — DBs essentially never
+    // record sacks in real football.
+    defenders: [
+      ...topPlayersAt(players, ["LE", "RE", "DT"], 3),
+      ...topPlayersAt(players, ["LOLB", "MLB", "ROLB"], 3),
+      ...topPlayersAt(players, ["CB", "FS", "SS"], 4),
+    ],
     injured: new Set(),
   };
 }
