@@ -72,6 +72,56 @@ function playIcon(playType: PlayByPlayEntry["playType"]) {
   }
 }
 
+type MotionKind = "pass" | "run" | "sack" | "kick" | "straight";
+
+function motionKind(play: PlayByPlayEntry): MotionKind {
+  switch (play.playType) {
+    case "sack":
+      return "sack";
+    case "pass":
+    case "interception":
+    case "incomplete":
+      return "pass";
+    case "run":
+    case "fumble":
+    case "kick_return":
+    case "punt_return":
+      return "run";
+    case "field_goal":
+    case "missed_field_goal":
+    case "punt":
+    case "extra_point":
+      return "kick";
+    case "touchdown":
+      return play.description.toLowerCase().includes("pass") ? "pass" : "run";
+    default:
+      return "straight";
+  }
+}
+
+// Builds an absolute-coordinate SVG path for the ball to travel along via
+// <animateMotion>, shaped per play type (arcing lob for passes/kicks, an
+// S-curve juke for runs, a jittery backward hop for sacks).
+function ballPath(kind: MotionKind, fromX: number, toX: number): string {
+  const dx = toX - fromX;
+  switch (kind) {
+    case "pass": {
+      const lift = Math.min(70, 20 + Math.abs(dx) * 0.18);
+      return `M${fromX},150 Q${(fromX + toX) / 2},${150 - lift} ${toX},150`;
+    }
+    case "kick": {
+      const lift = Math.min(110, 40 + Math.abs(dx) * 0.22);
+      return `M${fromX},150 Q${(fromX + toX) / 2},${150 - lift} ${toX},150`;
+    }
+    case "run":
+      return `M${fromX},150 C${fromX + dx * 0.3},${168} ${fromX + dx * 0.7},${132} ${toX},150`;
+    case "sack":
+      return `M${fromX},150 L${fromX + dx * 0.4},158 L${fromX + dx * 0.7},142 L${toX},150`;
+    default:
+      return `M${fromX},150 L${toX},150`;
+  }
+}
+
 const ENDZONE_WIDTH = 80;
 const FIELD_WIDTH = 840;
 
@@ -140,6 +190,12 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
     ? absoluteFieldX(Math.min(100, current.yardLine + current.distance), current.offenseAbbr, home.abbreviation)
     : null;
 
+  const prevPlay = index > 0 ? plays[index - 1] : null;
+  const prevBallX = prevPlay ? absoluteFieldX(prevPlay.yardLine, prevPlay.offenseAbbr, home.abbreviation) : ballX;
+  const kind = index >= 0 ? motionKind(current) : "straight";
+  const motionDurationMs = Math.max(280, Math.round(SPEEDS[speed] * 0.7));
+  const loftClass = kind === "kick" ? "ball-loft-big" : kind === "pass" ? "ball-loft" : kind === "sack" ? "ball-shake" : "";
+
   return (
     <Card className="flex flex-col gap-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -206,16 +262,15 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
         )}
 
         {index >= 0 && (
-          <g
-            key={`ball-${index}`}
-            transform={`translate(${ballX}, 150)`}
-            className={`transition-transform duration-500 ease-in-out ${scoredThisPlay ? "score-pop" : ""}`}
-          >
-            <ellipse rx="14" ry="9" fill="#8B4513" stroke="#3a1f0a" strokeWidth="2" />
-            <line x1="-7" y1="0" x2="7" y2="0" stroke="#fff" strokeWidth="1.5" />
-            <line x1="-3" y1="-3" x2="-3" y2="3" stroke="#fff" strokeWidth="1" />
-            <line x1="0" y1="-3" x2="0" y2="3" stroke="#fff" strokeWidth="1" />
-            <line x1="3" y1="-3" x2="3" y2="3" stroke="#fff" strokeWidth="1" />
+          <g key={`ball-${index}`} className={scoredThisPlay ? "score-pop" : ""}>
+            <g className={loftClass} style={{ animationDuration: `${motionDurationMs}ms` }}>
+              <ellipse rx="14" ry="9" fill="#8B4513" stroke="#3a1f0a" strokeWidth="2" />
+              <line x1="-7" y1="0" x2="7" y2="0" stroke="#fff" strokeWidth="1.5" />
+              <line x1="-3" y1="-3" x2="-3" y2="3" stroke="#fff" strokeWidth="1" />
+              <line x1="0" y1="-3" x2="0" y2="3" stroke="#fff" strokeWidth="1" />
+              <line x1="3" y1="-3" x2="3" y2="3" stroke="#fff" strokeWidth="1" />
+              <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={ballPath(kind, prevBallX, ballX)} />
+            </g>
           </g>
         )}
       </svg>

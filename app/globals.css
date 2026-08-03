@@ -121,3 +121,57 @@ body {
 .score-pop {
   animation: score-pop 600ms ease-out;
 }
+
+@keyframes ball-loft {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+}
+.ball-loft {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-name: ball-loft;
+  animation-timing-function: ease-in-out;
+}
+
+@keyframes ball-loft-big {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.6);
+  }
+}
+.ball-loft-big {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-name: ball-loft-big;
+  animation-timing-function: ease-in-out;
+}
+
+@keyframes ball-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(2px, -2px);
+  }
+  50% {
+    transform: translate(-2px, 2px);
+  }
+  75% {
+    transform: translate(2px, 2px);
+  }
+}
+.ball-shake {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-name: ball-shake;
+  animation-timing-function: ease-in-out;
+}
