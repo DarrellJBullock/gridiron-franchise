@@ -70,7 +70,12 @@ function buildContext(name: string, abbr: string, players: RatedPlayer[]): TeamC
     qb: qbPool[0],
     qbDepth: qbPool.slice(1),
     rbs: topPlayersAt(players, ["RB", "FB"], 3),
-    receivers: topPlayersAt(players, ["WR", "TE"], 5),
+    // Same group-by-group fix as defenders below — a flat top-5-by-overall
+    // across WR+TE combined let a team's tight ends get crowded out by
+    // receivers entirely if the WRs simply rated higher.
+    receivers: [...topPlayersAt(players, ["WR"], 4), ...topPlayersAt(players, ["TE"], 2)].sort(
+      (a, b) => b.overall - a.overall
+    ),
     kicker: kickerPool[0],
     kickerDepth: kickerPool.slice(1),
     // Built group by group (not one flat top-9-by-overall pool) so a team
