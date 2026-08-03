@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
+import { TeamLogo } from "@/components/football/TeamLogo";
 import type { PlayByPlayEntry } from "@/types/football";
 
 interface LiveGamePlayerProps {
@@ -71,14 +72,15 @@ function playIcon(playType: PlayByPlayEntry["playType"]) {
   }
 }
 
+const ENDZONE_WIDTH = 80;
+const FIELD_WIDTH = 840;
+
 // yardLine is stored relative to the offense's own goal line (0-100). The
 // field is drawn with the home team's goal line on the left and away's on
 // the right, so an away possession needs to be mirrored to land in the
 // right spot visually.
-function absoluteFieldX(play: PlayByPlayEntry, homeAbbr: string): number {
-  const absoluteYardLine = play.offenseAbbr === homeAbbr ? play.yardLine : 100 - play.yardLine;
-  const ENDZONE_WIDTH = 80;
-  const FIELD_WIDTH = 840;
+function absoluteFieldX(yardLine: number, offenseAbbr: string, homeAbbr: string): number {
+  const absoluteYardLine = offenseAbbr === homeAbbr ? yardLine : 100 - yardLine;
   return ENDZONE_WIDTH + (absoluteYardLine / 100) * FIELD_WIDTH;
 }
 
@@ -127,16 +129,24 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   }
 
   const current = plays[Math.max(index, 0)];
-  const ballX = absoluteFieldX(current, home.abbreviation);
   const offenseIsHome = current.offenseAbbr === home.abbreviation;
+  const ballX = absoluteFieldX(current.yardLine, current.offenseAbbr, home.abbreviation);
+  const scoredThisPlay = current.isScoring && pointsForPlay(current) > 0;
+  const homeJustScored = scoredThisPlay && offenseIsHome;
+  const awayJustScored = scoredThisPlay && !offenseIsHome;
+
+  const showFirstDownLine = index >= 0 && current.down >= 1 && current.down <= 4 && current.distance > 0;
+  const firstDownX = showFirstDownLine
+    ? absoluteFieldX(Math.min(100, current.yardLine + current.distance), current.offenseAbbr, home.abbreviation)
+    : null;
 
   return (
     <Card className="flex flex-col gap-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
-          <TeamScorePill abbr={home.abbreviation} color={home.primaryColor} score={homeScore} possession={offenseIsHome && index >= 0} />
+          <TeamScorePill abbr={home.abbreviation} color={home.primaryColor} score={homeScore} possession={offenseIsHome && index >= 0} justScored={homeJustScored} />
           <span className="text-xs font-bold text-text-faint">@</span>
-          <TeamScorePill abbr={away.abbreviation} color={away.primaryColor} score={awayScore} possession={!offenseIsHome && index >= 0} />
+          <TeamScorePill abbr={away.abbreviation} color={away.primaryColor} score={awayScore} possession={!offenseIsHome && index >= 0} justScored={awayJustScored} />
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
           <span className="rounded bg-surface-hover px-2 py-1">{quarterLabel(current.quarter)}</span>
@@ -148,17 +158,18 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
 
       <svg viewBox="0 0 1000 300" className="w-full rounded-lg border border-border-line" role="img" aria-label="Field position">
         <rect x="0" y="0" width="1000" height="300" fill="#14532d" />
-        <rect x="0" y="0" width="80" height="300" fill={home.secondaryColor} fillOpacity="0.9" />
-        <rect x="920" y="0" width="80" height="300" fill={away.secondaryColor} fillOpacity="0.9" />
-        <text x="40" y="155" textAnchor="middle" fontSize="20" fontWeight="900" fill={home.primaryColor} transform="rotate(-90 40 155)">
-          {home.abbreviation}
-        </text>
-        <text x="960" y="155" textAnchor="middle" fontSize="20" fontWeight="900" fill={away.primaryColor} transform="rotate(90 960 155)">
-          {away.abbreviation}
-        </text>
+        <rect x="0" y="0" width={ENDZONE_WIDTH} height="300" fill={home.secondaryColor} fillOpacity="0.9" />
+        <rect x={1000 - ENDZONE_WIDTH} y="0" width={ENDZONE_WIDTH} height="300" fill={away.secondaryColor} fillOpacity="0.9" />
+
+        <g transform={`translate(8, ${(300 - 64) / 2})`}>
+          <TeamLogo seed={home.abbreviation} primaryColor={home.primaryColor} secondaryColor={home.secondaryColor} abbreviation={home.abbreviation} size={64} />
+        </g>
+        <g transform={`translate(${1000 - ENDZONE_WIDTH + 8}, ${(300 - 64) / 2})`}>
+          <TeamLogo seed={away.abbreviation} primaryColor={away.primaryColor} secondaryColor={away.secondaryColor} abbreviation={away.abbreviation} size={64} />
+        </g>
 
         {Array.from({ length: 9 }, (_, i) => (i + 1) * 10).map((yard) => {
-          const x = 80 + (yard / 100) * 840;
+          const x = ENDZONE_WIDTH + (yard / 100) * FIELD_WIDTH;
           const label = yardMarkerLabel(yard);
           return (
             <g key={yard}>
@@ -177,10 +188,34 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
           );
         })}
 
+        {/* Line of scrimmage */}
         {index >= 0 && (
-          <g transform={`translate(${ballX}, 150)`}>
+          <line x1={ballX} x2={ballX} y1={0} y2={300} stroke="#60a5fa" strokeWidth="2" strokeOpacity="0.75" strokeDasharray="5 5" />
+        )}
+        {/* First-down marker */}
+        {firstDownX !== null && (
+          <line x1={firstDownX} x2={firstDownX} y1={0} y2={300} stroke="#facc15" strokeWidth="2.5" strokeDasharray="7 4" />
+        )}
+
+        {/* Penalty flag / scoring flash overlays — keyed by index so the CSS animation re-triggers every play */}
+        {index >= 0 && current.playType === "penalty" && (
+          <rect key={`penalty-${index}`} x="0" y="0" width="1000" height="300" fill="#facc15" fillOpacity="0.22" className="penalty-flash" pointerEvents="none" />
+        )}
+        {scoredThisPlay && (
+          <rect key={`score-${index}`} x="0" y="0" width="1000" height="300" fill="#f5a623" fillOpacity="0.28" className="score-flash" pointerEvents="none" />
+        )}
+
+        {index >= 0 && (
+          <g
+            key={`ball-${index}`}
+            transform={`translate(${ballX}, 150)`}
+            className={`transition-transform duration-500 ease-in-out ${scoredThisPlay ? "score-pop" : ""}`}
+          >
             <ellipse rx="14" ry="9" fill="#8B4513" stroke="#3a1f0a" strokeWidth="2" />
             <line x1="-7" y1="0" x2="7" y2="0" stroke="#fff" strokeWidth="1.5" />
+            <line x1="-3" y1="-3" x2="-3" y2="3" stroke="#fff" strokeWidth="1" />
+            <line x1="0" y1="-3" x2="0" y2="3" stroke="#fff" strokeWidth="1" />
+            <line x1="3" y1="-3" x2="3" y2="3" stroke="#fff" strokeWidth="1" />
           </g>
         )}
       </svg>
@@ -195,7 +230,9 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
                 ? "text-sm font-semibold text-accent"
                 : current.isTurnover
                   ? "text-sm font-semibold text-danger"
-                  : "text-sm text-text-primary"
+                  : current.playType === "penalty"
+                    ? "text-sm font-semibold text-yellow-400"
+                    : "text-sm text-text-primary"
           }
         >
           {index < 0 ? "Ready to kick off." : current.description}
@@ -244,7 +281,19 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   );
 }
 
-function TeamScorePill({ abbr, color, score, possession }: { abbr: string; color: string; score: number; possession: boolean }) {
+function TeamScorePill({
+  abbr,
+  color,
+  score,
+  possession,
+  justScored,
+}: {
+  abbr: string;
+  color: string;
+  score: number;
+  possession: boolean;
+  justScored: boolean;
+}) {
   return (
     <div className="flex items-center gap-2">
       <span
@@ -253,7 +302,9 @@ function TeamScorePill({ abbr, color, score, possession }: { abbr: string; color
       >
         {abbr}
       </span>
-      <span className="text-2xl font-black tabular-nums text-text-primary">{score}</span>
+      <span key={score} className={`text-2xl font-black tabular-nums text-text-primary ${justScored ? "score-pop text-accent" : ""}`}>
+        {score}
+      </span>
       {possession && <span className="text-xs" title="Has the ball">🏈</span>}
     </div>
   );

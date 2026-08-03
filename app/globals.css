@@ -77,3 +77,47 @@ body {
 .rating-fill {
   animation: rating-fill 700ms ease-out;
 }
+
+@keyframes penalty-flash {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  20%,
+  75% {
+    opacity: 1;
+  }
+}
+.penalty-flash {
+  animation: penalty-flash 1.3s ease-in-out;
+}
+
+@keyframes score-flash {
+  0% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.score-flash {
+  animation: score-flash 1.4s ease-out;
+}
+
+@keyframes score-pop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.score-pop {
+  animation: score-pop 600ms ease-out;
+}
