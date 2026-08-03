@@ -36,7 +36,10 @@ const NAV_SECTIONS: { label: string; items: { href: string; label: string; icon:
   },
   {
     label: "Info",
-    items: [{ href: "/about", label: "About", icon: "ℹ️" }],
+    items: [
+      { href: "/about", label: "About", icon: "ℹ️" },
+      { href: "/settings", label: "Settings", icon: "⚙️" },
+    ],
   },
 ];
 
