@@ -85,6 +85,12 @@ export class PlayerStatAccumulator {
     line.fieldGoalsMade = (line.fieldGoalsMade ?? 0) + 1;
   }
 
+  addPunt(player: RatedPlayer, yards: number) {
+    const line = this.get(player);
+    line.punts = (line.punts ?? 0) + 1;
+    line.puntYards = (line.puntYards ?? 0) + yards;
+  }
+
   addKickReturn(player: RatedPlayer, yards: number, touchdown: boolean) {
     const line = this.get(player);
     line.kickReturnYards = (line.kickReturnYards ?? 0) + yards;

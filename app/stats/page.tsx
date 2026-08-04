@@ -7,6 +7,7 @@ import { StatLeaderTable } from "@/components/football/StatLeaderTable";
 import { PassingLeaderTable } from "@/components/football/PassingLeaderTable";
 import { RushingLeaderTable } from "@/components/football/RushingLeaderTable";
 import { ReceivingLeaderTable } from "@/components/football/ReceivingLeaderTable";
+import { PuntingLeaderTable } from "@/components/football/PuntingLeaderTable";
 import { StatLeaderScopeSelect } from "@/components/football/StatLeaderScopeSelect";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,7 @@ export default async function StatsPage({
         <StatLeaderTable title="Sack Leaders" unit="Sacks" rows={leaders.sacks} />
         <StatLeaderTable title="Interception Leaders" unit="INTs" rows={leaders.interceptions} />
         <StatLeaderTable title="Kicking Leaders" unit="FG Made" rows={leaders.kicking} />
+        <PuntingLeaderTable rows={leaders.punting} />
         <StatLeaderTable title="Return Leaders" unit="Return Yards" rows={leaders.returns} />
       </div>
     </div>

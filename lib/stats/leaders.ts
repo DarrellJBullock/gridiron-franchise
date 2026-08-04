@@ -46,6 +46,16 @@ export interface ReceivingLeaderRow {
   touchdowns: number;
 }
 
+export interface PuntingLeaderRow {
+  playerId: string;
+  playerName: string;
+  position: Position;
+  teamAbbreviation: string;
+  punts: number;
+  yards: number;
+  avg: number;
+}
+
 // Standard NFL passer rating formula — each of the four components is
 // clamped to [0, 2.375] before averaging, same as the official formula.
 function passerRating(attempts: number, completions: number, yards: number, touchdowns: number, interceptions: number): number {
@@ -82,6 +92,8 @@ export async function getStatLeaders(leagueId: string, seasonId?: string) {
       interceptions: true,
       interceptionsMade: true,
       fieldGoalsMade: true,
+      punts: true,
+      puntYards: true,
       kickReturnYards: true,
       kickReturnTouchdowns: true,
       puntReturnYards: true,
@@ -94,6 +106,7 @@ export async function getStatLeaders(leagueId: string, seasonId?: string) {
       passing: [] as PassingLeaderRow[],
       rushing: [] as RushingLeaderRow[],
       receiving: [] as ReceivingLeaderRow[],
+      punting: [] as PuntingLeaderRow[],
       defense: [] as StatLeaderRow[],
       kicking: [] as StatLeaderRow[],
       sacks: [] as StatLeaderRow[],
@@ -199,10 +212,31 @@ export async function getStatLeaders(leagueId: string, seasonId?: string) {
     .sort((a, b) => b.yards - a.yards)
     .slice(0, TOP_N);
 
+  const punting: PuntingLeaderRow[] = grouped
+    .map((g): PuntingLeaderRow | null => {
+      const player = playerMap.get(g.playerId);
+      const punts = g._sum.punts ?? 0;
+      if (!player || punts <= 0) return null;
+      const yards = g._sum.puntYards ?? 0;
+      return {
+        playerId: g.playerId,
+        playerName: `${player.firstName} ${player.lastName}`,
+        position: player.position,
+        teamAbbreviation: player.team.abbreviation,
+        punts,
+        yards,
+        avg: Math.round((yards / punts) * 10) / 10,
+      };
+    })
+    .filter((row): row is PuntingLeaderRow => row !== null)
+    .sort((a, b) => b.yards - a.yards)
+    .slice(0, TOP_N);
+
   return {
     passing,
     rushing,
     receiving,
+    punting,
     defense: topBy((g) => (g._sum.tackles ?? 0) + (g._sum.sacks ?? 0) * 2 + (g._sum.forcedFumbles ?? 0) * 3),
     kicking: topBy((g) => g._sum.fieldGoalsMade ?? 0),
     sacks: topBy((g) => g._sum.sacks ?? 0),

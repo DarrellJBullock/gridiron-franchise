@@ -286,6 +286,8 @@ model GamePlayerStats {
   sacks                Float  @default(0)
   forcedFumbles        Int    @default(0)
   fieldGoalsMade       Int    @default(0)
+  punts                Int    @default(0)
+  puntYards            Int    @default(0)
   kickReturnYards      Int    @default(0)
   kickReturnTouchdowns Int    @default(0)
   puntReturnYards      Int    @default(0)

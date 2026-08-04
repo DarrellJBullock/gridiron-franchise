@@ -246,6 +246,8 @@ export interface GamePlayerStatLine {
   sacks?: number;
   forcedFumbles?: number;
   fieldGoalsMade?: number;
+  punts?: number;
+  puntYards?: number;
   kickReturnYards?: number;
   kickReturnTouchdowns?: number;
   puntReturnYards?: number;

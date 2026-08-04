@@ -69,6 +69,8 @@ export async function persistSimulatedGame({
         sacks: line.sacks ?? 0,
         forcedFumbles: line.forcedFumbles ?? 0,
         fieldGoalsMade: line.fieldGoalsMade ?? 0,
+        punts: line.punts ?? 0,
+        puntYards: line.puntYards ?? 0,
         kickReturnYards: line.kickReturnYards ?? 0,
         kickReturnTouchdowns: line.kickReturnTouchdowns ?? 0,
         puntReturnYards: line.puntReturnYards ?? 0,

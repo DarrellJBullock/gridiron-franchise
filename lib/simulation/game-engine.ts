@@ -39,6 +39,8 @@ interface TeamContext {
   receivers: RatedPlayer[];
   kicker?: RatedPlayer;
   kickerDepth: RatedPlayer[];
+  punter?: RatedPlayer;
+  punterDepth: RatedPlayer[];
   defenders: RatedPlayer[];
   // Player ids ruled out for the rest of this game by an in-game injury.
   injured: Set<string>;
@@ -61,6 +63,7 @@ function buildContext(name: string, abbr: string, players: RatedPlayer[]): TeamC
   const ratings = calculateTeamRatings(players);
   const qbPool = topPlayersAt(players, ["QB"], 3);
   const kickerPool = topPlayersAt(players, ["K"], 2);
+  const punterPool = topPlayersAt(players, ["P"], 2);
   return {
     name,
     abbr,
@@ -79,6 +82,8 @@ function buildContext(name: string, abbr: string, players: RatedPlayer[]): TeamC
     ),
     kicker: kickerPool[0],
     kickerDepth: kickerPool.slice(1),
+    punter: punterPool[0],
+    punterDepth: punterPool.slice(1),
     // Built group by group (not one flat top-9-by-overall pool) so a team
     // whose DL/LB happen to rate lower than their secondary still gets
     // those players into the rotation — otherwise they'd never be picked
@@ -112,6 +117,7 @@ function sidelinePlayer(team: TeamContext, player: RatedPlayer) {
   team.defenders = team.defenders.filter((p) => p.id !== player.id);
   if (team.qb?.id === player.id) team.qb = team.qbDepth.shift();
   if (team.kicker?.id === player.id) team.kicker = team.kickerDepth.shift();
+  if (team.punter?.id === player.id) team.punter = team.punterDepth.shift();
 }
 
 function injuryPlay(
@@ -282,6 +288,9 @@ function simulateDrive(
 
       if (!goForIt) {
         outcome = "punt";
+        const punterRating = offense.punter?.overall ?? 55;
+        const puntDistance = clamp(randomInt(32, 52) + Math.round((punterRating - 55) * 0.15), 25, 65);
+        if (offense.punter) stats.addPunt(offense.punter, puntDistance);
         plays.push({
           quarter,
           driveNumber,
@@ -290,11 +299,15 @@ function simulateDrive(
           distance: state.distance,
           yardLine: Math.round(state.yardLine),
           playType: "punt",
-          description: `${downLabel(state.down)} & ${state.distance} at the ${fieldPosition(state.yardLine)}: ${offense.abbr} sends out the punt team.`,
-          yards: 0,
+          description: `${downLabel(state.down)} & ${state.distance} at the ${fieldPosition(state.yardLine)}: ${shortName(
+            offense.punter,
+            "The punter"
+          )} punts ${puntDistance} yards.`,
+          yards: puntDistance,
           isScoring: false,
           isTurnover: false,
         });
+        checkInjury(offense, offense.punter, 0.002);
         driveOver = true;
         break;
       }
