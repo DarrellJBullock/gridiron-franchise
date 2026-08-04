@@ -881,12 +881,19 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
     return { ...result, returnTouchdown, receivingTeamName: receivingTeam.name };
   }
 
+  // Possession is tracked statefully (not derived from quarter/drive index)
+  // so a return touchdown is handled correctly: the team that just gave up
+  // a kick/punt return for a score has to kick off again, meaning the same
+  // team that was on offense this drive gets the ball right back — without
+  // this, the fixed alternating schedule would hand the ball to the team
+  // that just scored on the return, which is backwards.
+  let homeStarts = (1 + 0) % 2 === 0; // preserves the original opening possession
   for (let quarter = 1; quarter <= 4; quarter++) {
     for (let drive = 0; drive < drivesPerQuarterPerTeam; drive++) {
-      const homeStarts = (quarter + drive) % 2 === 0;
       const offense = homeStarts ? home : away;
       const defense = homeStarts ? away : home;
-      processDrive(offense, defense, homeStarts, quarter);
+      const result = processDrive(offense, defense, homeStarts, quarter);
+      if (!result.returnTouchdown) homeStarts = !homeStarts;
     }
   }
 
