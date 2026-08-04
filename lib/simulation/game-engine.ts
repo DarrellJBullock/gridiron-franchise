@@ -365,9 +365,13 @@ function simulateDrive(
 
       const breakawayChance = clamp(0.055 + diff * 0.0012, 0.02, 0.16);
       const isBreakaway = Math.random() < breakawayChance;
-      const yards = isBreakaway
+      const rawYards = isBreakaway
         ? randomInt(15, 50)
         : clamp(randomInt(2, 9) + Math.round(diff * 0.06), -3, 15);
+      // Can't gain more than the distance to the goal line — otherwise a
+      // breakaway run rolled near the end zone credits an impossible
+      // 40-some-yard gain on a play that only needed a few yards to score.
+      const yards = Math.min(rawYards, 100 - state.yardLine);
 
       // Post-snap penalty check (only on a play that didn't turn the ball over).
       if (Math.random() < 0.022) {
@@ -576,7 +580,10 @@ function simulateDrive(
 
     const deepChance = clamp(0.18 + diff * 0.0018, 0.08, 0.32);
     const isDeep = Math.random() < deepChance;
-    const yards = isDeep ? randomInt(16, 42) : randomInt(5, 15);
+    const rawYards = isDeep ? randomInt(16, 42) : randomInt(5, 15);
+    // Same cap as the run play above — a deep completion rolled from
+    // 1st-and-goal-from-the-5 shouldn't credit a 35-yard touchdown pass.
+    const yards = Math.min(rawYards, 100 - state.yardLine);
 
     if (Math.random() < 0.022) {
       addPenalty("offense", "Holding", 10, false, before);
