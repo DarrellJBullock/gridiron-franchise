@@ -270,12 +270,16 @@ model GamePlayerStats {
   id                   String @id @default(cuid())
   gameId               String
   playerId             String
+  passingAttempts      Int    @default(0)
+  passingCompletions   Int    @default(0)
   passingYards         Int    @default(0)
   passingTouchdowns    Int    @default(0)
   interceptions        Int    @default(0)
   interceptionsMade    Int    @default(0)
+  rushingAttempts      Int    @default(0)
   rushingYards         Int    @default(0)
   rushingTouchdowns    Int    @default(0)
+  receptions           Int    @default(0)
   receivingYards       Int    @default(0)
   receivingTouchdowns  Int    @default(0)
   tackles              Int    @default(0)

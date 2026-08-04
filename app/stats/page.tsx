@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { getOrCreateUserLeague } from "@/lib/league/get-or-create-user-league";
 import { getStatLeaders } from "@/lib/stats/leaders";
 import { StatLeaderTable } from "@/components/football/StatLeaderTable";
+import { PassingLeaderTable } from "@/components/football/PassingLeaderTable";
+import { RushingLeaderTable } from "@/components/football/RushingLeaderTable";
+import { ReceivingLeaderTable } from "@/components/football/ReceivingLeaderTable";
 import { StatLeaderScopeSelect } from "@/components/football/StatLeaderScopeSelect";
 
 export const dynamic = "force-dynamic";
@@ -43,9 +46,9 @@ export default async function StatsPage({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <StatLeaderTable title="Passing Leaders" unit="Yards" rows={leaders.passing} />
-        <StatLeaderTable title="Rushing Leaders" unit="Yards" rows={leaders.rushing} />
-        <StatLeaderTable title="Receiving Leaders" unit="Yards" rows={leaders.receiving} />
+        <PassingLeaderTable rows={leaders.passing} />
+        <RushingLeaderTable rows={leaders.rushing} />
+        <ReceivingLeaderTable rows={leaders.receiving} />
         <StatLeaderTable title="Rushing TD Leaders" unit="Rush TDs" rows={leaders.rushingTouchdowns} />
         <StatLeaderTable title="Receiving TD Leaders" unit="Rec TDs" rows={leaders.receivingTouchdowns} />
         <StatLeaderTable title="Points Leaders" unit="Points" rows={leaders.points} />

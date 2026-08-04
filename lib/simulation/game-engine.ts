@@ -341,6 +341,7 @@ function simulateDrive(
           isScoring: false,
           isTurnover: true,
         });
+        if (runner) stats.addRushAttempt(runner);
         checkInjury(offense, runner, 0.006);
         checkInjury(defense, defender, 0.006);
         turnover = true;
@@ -494,7 +495,7 @@ function simulateDrive(
     if (Math.random() < interceptionChance) {
       const defensiveBacks = defense.defenders.filter((d) => d.position === "CB" || d.position === "FS" || d.position === "SS");
       const interceptor = pickWeighted(defensiveBacks.length > 0 ? defensiveBacks : defense.defenders);
-      if (offense.qb) stats.addPassing(offense.qb, 0, false, true);
+      if (offense.qb) stats.addPassing(offense.qb, 0, false, false, true);
       if (interceptor) stats.addInterceptionMade(interceptor);
       plays.push({
         quarter,
@@ -551,6 +552,7 @@ function simulateDrive(
         isScoring: false,
         isTurnover: false,
       });
+      if (offense.qb) stats.addPassing(offense.qb, 0, false, false, false);
       checkInjury(offense, offense.qb, 0.003);
       if (state.down > 4) {
         outcome = "turnover";
@@ -577,7 +579,7 @@ function simulateDrive(
     state.yardLine = clamp(state.yardLine + yards, 1, 100);
     const isTouchdown = state.yardLine >= 100;
 
-    if (offense.qb) stats.addPassing(offense.qb, yards, isTouchdown, false);
+    if (offense.qb) stats.addPassing(offense.qb, yards, true, isTouchdown, false);
     if (receiver) stats.addReceiving(receiver, yards, isTouchdown);
     if (yards >= 20) {
       bigPlay = true;

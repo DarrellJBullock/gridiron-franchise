@@ -230,12 +230,16 @@ export interface GamePlayerStatLine {
   playerId: string;
   playerName: string;
   position: Position;
+  passingAttempts?: number;
+  passingCompletions?: number;
   passingYards?: number;
   passingTouchdowns?: number;
   interceptions?: number;
   interceptionsMade?: number;
+  rushingAttempts?: number;
   rushingYards?: number;
   rushingTouchdowns?: number;
+  receptions?: number;
   receivingYards?: number;
   receivingTouchdowns?: number;
   tackles?: number;

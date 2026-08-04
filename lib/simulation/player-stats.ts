@@ -30,8 +30,10 @@ export class PlayerStatAccumulator {
     return fresh;
   }
 
-  addPassing(player: RatedPlayer, yards: number, touchdown: boolean, interception: boolean) {
+  addPassing(player: RatedPlayer, yards: number, completed: boolean, touchdown: boolean, interception: boolean) {
     const line = this.get(player);
+    line.passingAttempts = (line.passingAttempts ?? 0) + 1;
+    if (completed) line.passingCompletions = (line.passingCompletions ?? 0) + 1;
     line.passingYards = (line.passingYards ?? 0) + yards;
     if (touchdown) line.passingTouchdowns = (line.passingTouchdowns ?? 0) + 1;
     if (interception) line.interceptions = (line.interceptions ?? 0) + 1;
@@ -39,12 +41,21 @@ export class PlayerStatAccumulator {
 
   addRushing(player: RatedPlayer, yards: number, touchdown: boolean) {
     const line = this.get(player);
+    line.rushingAttempts = (line.rushingAttempts ?? 0) + 1;
     line.rushingYards = (line.rushingYards ?? 0) + yards;
     if (touchdown) line.rushingTouchdowns = (line.rushingTouchdowns ?? 0) + 1;
   }
 
+  // A fumble is lost before yardage is applied, but the carry itself still
+  // happened — credited as an attempt with no yards, same as an NFL box score.
+  addRushAttempt(player: RatedPlayer) {
+    const line = this.get(player);
+    line.rushingAttempts = (line.rushingAttempts ?? 0) + 1;
+  }
+
   addReceiving(player: RatedPlayer, yards: number, touchdown: boolean) {
     const line = this.get(player);
+    line.receptions = (line.receptions ?? 0) + 1;
     line.receivingYards = (line.receivingYards ?? 0) + yards;
     if (touchdown) line.receivingTouchdowns = (line.receivingTouchdowns ?? 0) + 1;
   }

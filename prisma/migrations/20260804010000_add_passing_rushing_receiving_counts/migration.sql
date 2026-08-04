@@ -1,0 +1,4 @@
+ALTER TABLE "GamePlayerStats" ADD COLUMN "passingAttempts" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "GamePlayerStats" ADD COLUMN "passingCompletions" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "GamePlayerStats" ADD COLUMN "rushingAttempts" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "GamePlayerStats" ADD COLUMN "receptions" INTEGER NOT NULL DEFAULT 0;
