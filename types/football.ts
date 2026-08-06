@@ -287,6 +287,11 @@ export interface PlayByPlayEntry {
   secondsRemaining: number;
 }
 
+// The shape used while a play is still being built, before it's assigned a
+// final sequence number and a stamped game clock — both computed in a
+// single pass at the very end of simulateGame.
+export type PlayDraft = Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">;
+
 export interface SimulatedGameResult {
   homeScore: number;
   awayScore: number;

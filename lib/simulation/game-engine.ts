@@ -2,13 +2,14 @@ import type {
   GamePlayerStatLine,
   GameTeamStatLine,
   PlayByPlayEntry,
+  PlayDraft,
   PlayType,
   QuarterScores,
   SimulatedGameResult,
 } from "@/types/football";
 import { calculateTeamRatings, type RatedPlayer } from "./team-ratings";
 import { topPlayersAt, PlayerStatAccumulator, selectTopPerformers } from "./player-stats";
-import { shortName, downLabel, fieldPosition, generateReturnPlay } from "./play-by-play";
+import { shortName, downLabel, fieldPosition, generateReturnPlay, extraPointPlay, randomInt } from "./play-by-play";
 
 // A franchise-style statistical simulation, not a physics engine — but every
 // drive is resolved down by down (not as one aggregate outcome with flavor
@@ -50,13 +51,24 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function randomInt(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
 function pickWeighted<T>(items: T[]): T | undefined {
   if (items.length === 0) return undefined;
   return items[randomInt(0, items.length - 1)];
+}
+
+// Rolls whether a tackle happens on a non-touchdown play and, if so, picks
+// and credits the tackler. Shared by the run and pass branches, which only
+// differ in their tackle-chance constant.
+function maybeAssignTackler(
+  defense: TeamContext,
+  stats: PlayerStatAccumulator,
+  chance: number,
+  isTouchdown: boolean
+): RatedPlayer | undefined {
+  if (Math.random() >= chance) return undefined;
+  const tackler = pickWeighted(defense.defenders);
+  if (tackler && !isTouchdown) stats.addTackle(tackler);
+  return tackler;
 }
 
 function buildContext(name: string, abbr: string, players: RatedPlayer[]): TeamContext {
@@ -100,6 +112,14 @@ function buildContext(name: string, abbr: string, players: RatedPlayer[]): TeamC
   };
 }
 
+// Per-touch injury base chances, before the durability scaling below.
+// Grouped by how much contact the play actually involves.
+const INJURY_CHANCE_KICK_ATTEMPT = 0.002; // a kicker/punter's own attempt — minimal contact
+const INJURY_CHANCE_QB_DROPBACK = 0.003; // QB play without being hit (incomplete, or after releasing a TD)
+const INJURY_CHANCE_SACK_OR_INTERCEPTION = 0.004; // QB sacked, QB's pass picked off, or the interceptor
+const INJURY_CHANCE_TACKLE = 0.005; // making a tackle, or a return man taking a hit
+const INJURY_CHANCE_HIGH_CONTACT = 0.006; // full-speed collision: rusher, receiver, sacker, forced-fumble defender
+
 // Higher `injury` (durability, 0-100) means fewer in-game injuries. Chance
 // scales from 0.6x baseChance (durability 100) up to 1.6x (durability 0).
 function rollInjury(player: RatedPlayer | undefined, baseChance: number): boolean {
@@ -127,7 +147,7 @@ function injuryPlay(
   quarter: number,
   driveNumber: number,
   yardLine: number
-): Omit<PlayByPlayEntry, "sequence" | "secondsRemaining"> {
+): PlayDraft {
   return {
     quarter,
     driveNumber,
@@ -150,7 +170,7 @@ interface DriveResult {
   bigPlay: boolean;
   bigPlayYards: number;
   quarter: number;
-  plays: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[];
+  plays: PlayDraft[];
   outcome: "touchdown" | "field_goal" | "missed_field_goal" | "punt" | "turnover";
   firstDowns: number;
   penaltyCount: number;
@@ -166,6 +186,14 @@ interface DriveState {
 
 function goalToGoCap(distance: number, yardLine: number): number {
   return Math.max(1, Math.min(distance, 100 - yardLine));
+}
+
+// A play's yardage can never exceed the distance remaining to the goal
+// line — otherwise a breakaway run or deep completion rolled near the end
+// zone would credit (and describe) an impossible gain, e.g. a "35-yard
+// touchdown pass" from 1st-and-goal at the 5.
+function capYardsToGoalLine(rawYards: number, yardLine: number): number {
+  return Math.min(rawYards, 100 - yardLine);
 }
 
 /**
@@ -190,7 +218,7 @@ function simulateDrive(
   const defEff = defense.defenseRating;
   const diff = offEff - defEff;
 
-  const plays: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[] = [];
+  const plays: PlayDraft[] = [];
   const state: DriveState = { down: 1, distance: 10, yardLine: randomInt(18, 32) };
 
   let points = 0;
@@ -281,7 +309,7 @@ function simulateDrive(
           isScoring: made,
           isTurnover: false,
         });
-        checkInjury(offense, offense.kicker, 0.002);
+        checkInjury(offense, offense.kicker, INJURY_CHANCE_KICK_ATTEMPT);
         driveOver = true;
         break;
       }
@@ -307,7 +335,7 @@ function simulateDrive(
           isScoring: false,
           isTurnover: false,
         });
-        checkInjury(offense, offense.punter, 0.002);
+        checkInjury(offense, offense.punter, INJURY_CHANCE_KICK_ATTEMPT);
         driveOver = true;
         break;
       }
@@ -355,8 +383,8 @@ function simulateDrive(
           isTurnover: true,
         });
         if (runner) stats.addRushAttempt(runner);
-        checkInjury(offense, runner, 0.006);
-        checkInjury(defense, defender, 0.006);
+        checkInjury(offense, runner, INJURY_CHANCE_HIGH_CONTACT);
+        checkInjury(defense, defender, INJURY_CHANCE_HIGH_CONTACT);
         turnover = true;
         outcome = "turnover";
         driveOver = true;
@@ -368,10 +396,7 @@ function simulateDrive(
       const rawYards = isBreakaway
         ? randomInt(15, 50)
         : clamp(randomInt(2, 9) + Math.round(diff * 0.06), -3, 15);
-      // Can't gain more than the distance to the goal line — otherwise a
-      // breakaway run rolled near the end zone credits an impossible
-      // 40-some-yard gain on a play that only needed a few yards to score.
-      const yards = Math.min(rawYards, 100 - state.yardLine);
+      const yards = capYardsToGoalLine(rawYards, state.yardLine);
 
       // Post-snap penalty check (only on a play that didn't turn the ball over).
       if (Math.random() < 0.022) {
@@ -393,11 +418,7 @@ function simulateDrive(
         bigPlay = true;
         bigPlayYards = Math.max(bigPlayYards, yards);
       }
-      let tackler: RatedPlayer | undefined;
-      if (Math.random() < 0.55) {
-        tackler = pickWeighted(defense.defenders);
-        if (tackler && !isTouchdown) stats.addTackle(tackler);
-      }
+      const tackler = maybeAssignTackler(defense, stats, 0.55, isTouchdown);
 
       if (isTouchdown) {
         points = 7;
@@ -417,20 +438,8 @@ function simulateDrive(
           isScoring: true,
           isTurnover: false,
         });
-        checkInjury(offense, runner, 0.006);
-        plays.push({
-          quarter,
-          driveNumber,
-          offenseAbbr: offense.abbr,
-          down: 0,
-          distance: 0,
-          yardLine: 98,
-          playType: "extra_point",
-          description: `${shortName(offense.kicker, "The kicker")} extra point is good.`,
-          yards: 0,
-          isScoring: true,
-          isTurnover: false,
-        });
+        checkInjury(offense, runner, INJURY_CHANCE_HIGH_CONTACT);
+        plays.push(extraPointPlay(quarter, driveNumber, offense.abbr, offense.kicker));
         driveOver = true;
         break;
       }
@@ -462,8 +471,8 @@ function simulateDrive(
         isScoring: false,
         isTurnover: false,
       });
-      checkInjury(offense, runner, 0.006);
-      checkInjury(defense, tackler, 0.005);
+      checkInjury(offense, runner, INJURY_CHANCE_HIGH_CONTACT);
+      checkInjury(defense, tackler, INJURY_CHANCE_TACKLE);
 
       if (state.down > 4) {
         outcome = "turnover"; // safety net only — 4th down is handled explicitly above
@@ -499,8 +508,8 @@ function simulateDrive(
         isScoring: false,
         isTurnover: false,
       });
-      checkInjury(offense, offense.qb, 0.004);
-      checkInjury(defense, sacker, 0.006);
+      checkInjury(offense, offense.qb, INJURY_CHANCE_SACK_OR_INTERCEPTION);
+      checkInjury(defense, sacker, INJURY_CHANCE_HIGH_CONTACT);
       if (state.down > 4) {
         outcome = "turnover";
         driveOver = true;
@@ -530,8 +539,8 @@ function simulateDrive(
         isScoring: false,
         isTurnover: true,
       });
-      checkInjury(offense, offense.qb, 0.004);
-      checkInjury(defense, interceptor, 0.004);
+      checkInjury(offense, offense.qb, INJURY_CHANCE_SACK_OR_INTERCEPTION);
+      checkInjury(defense, interceptor, INJURY_CHANCE_SACK_OR_INTERCEPTION);
       turnover = true;
       outcome = "turnover";
       driveOver = true;
@@ -570,7 +579,7 @@ function simulateDrive(
         isTurnover: false,
       });
       if (offense.qb) stats.addPassing(offense.qb, 0, false, false, false);
-      checkInjury(offense, offense.qb, 0.003);
+      checkInjury(offense, offense.qb, INJURY_CHANCE_QB_DROPBACK);
       if (state.down > 4) {
         outcome = "turnover";
         driveOver = true;
@@ -581,9 +590,7 @@ function simulateDrive(
     const deepChance = clamp(0.18 + diff * 0.0018, 0.08, 0.32);
     const isDeep = Math.random() < deepChance;
     const rawYards = isDeep ? randomInt(16, 42) : randomInt(5, 15);
-    // Same cap as the run play above — a deep completion rolled from
-    // 1st-and-goal-from-the-5 shouldn't credit a 35-yard touchdown pass.
-    const yards = Math.min(rawYards, 100 - state.yardLine);
+    const yards = capYardsToGoalLine(rawYards, state.yardLine);
 
     if (Math.random() < 0.022) {
       addPenalty("offense", "Holding", 10, false, before);
@@ -605,11 +612,7 @@ function simulateDrive(
       bigPlay = true;
       bigPlayYards = Math.max(bigPlayYards, yards);
     }
-    let tackler: RatedPlayer | undefined;
-    if (Math.random() < 0.6) {
-      tackler = pickWeighted(defense.defenders);
-      if (tackler && !isTouchdown) stats.addTackle(tackler);
-    }
+    const tackler = maybeAssignTackler(defense, stats, 0.6, isTouchdown);
 
     if (isTouchdown) {
       points = 7;
@@ -630,21 +633,9 @@ function simulateDrive(
         isScoring: true,
         isTurnover: false,
       });
-      checkInjury(offense, offense.qb, 0.003);
-      checkInjury(offense, receiver, 0.006);
-      plays.push({
-        quarter,
-        driveNumber,
-        offenseAbbr: offense.abbr,
-        down: 0,
-        distance: 0,
-        yardLine: 98,
-        playType: "extra_point",
-        description: `${shortName(offense.kicker, "The kicker")} extra point is good.`,
-        yards: 0,
-        isScoring: true,
-        isTurnover: false,
-      });
+      checkInjury(offense, offense.qb, INJURY_CHANCE_QB_DROPBACK);
+      checkInjury(offense, receiver, INJURY_CHANCE_HIGH_CONTACT);
+      plays.push(extraPointPlay(quarter, driveNumber, offense.abbr, offense.kicker));
       driveOver = true;
       break;
     }
@@ -676,9 +667,9 @@ function simulateDrive(
       isScoring: false,
       isTurnover: false,
     });
-    checkInjury(offense, offense.qb, 0.003);
-    checkInjury(offense, receiver, 0.006);
-    checkInjury(defense, tackler, 0.005);
+    checkInjury(offense, offense.qb, INJURY_CHANCE_QB_DROPBACK);
+    checkInjury(offense, receiver, INJURY_CHANCE_HIGH_CONTACT);
+    checkInjury(defense, tackler, INJURY_CHANCE_TACKLE);
 
     if (state.down > 4) {
       outcome = "turnover";
@@ -710,6 +701,19 @@ function formatClock(totalSeconds: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function emptyTeamLine(): GameTeamStatLine {
+  return {
+    totalYards: 0,
+    passingYards: 0,
+    rushingYards: 0,
+    turnovers: 0,
+    firstDowns: 0,
+    thirdDownConversions: "0/0",
+    timeOfPossession: "0:00",
+    penalties: "0-0",
+  };
+}
+
 // Approximate per-play game-clock runoff, used to stamp each play with a
 // quarter clock for display — not a full clock-stop rules engine, just
 // enough variation (incompletions/kicks burn little time, scrimmage plays
@@ -739,7 +743,7 @@ function simulateSpecialTeamsReturn(
   quarter: number,
   driveNumber: number,
   stats: PlayerStatAccumulator
-): { plays: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[]; points: number } {
+): { plays: PlayDraft[]; points: number } {
   const returner = pickWeighted([...receivingTeam.receivers, ...receivingTeam.rbs]);
   const tdChance = type === "kick" ? 0.02 : 0.015;
   const isTouchdown = Math.random() < tdChance;
@@ -760,7 +764,7 @@ function simulateSpecialTeamsReturn(
     isTouchdown,
   });
 
-  if (returner && rollInjury(returner, 0.005)) {
+  if (returner && rollInjury(returner, INJURY_CHANCE_TACKLE)) {
     sidelinePlayer(receivingTeam, returner);
     plays.push(injuryPlay(receivingTeam.abbr, receivingTeam.abbr, returner, quarter, driveNumber, yards));
   }
@@ -779,26 +783,8 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
     away: [0, 0, 0, 0],
   };
 
-  const homeLine: GameTeamStatLine = {
-    totalYards: 0,
-    passingYards: 0,
-    rushingYards: 0,
-    turnovers: 0,
-    firstDowns: 0,
-    thirdDownConversions: "0/0",
-    timeOfPossession: "0:00",
-    penalties: "0-0",
-  };
-  const awayLine: GameTeamStatLine = {
-    totalYards: 0,
-    passingYards: 0,
-    rushingYards: 0,
-    turnovers: 0,
-    firstDowns: 0,
-    thirdDownConversions: "0/0",
-    timeOfPossession: "0:00",
-    penalties: "0-0",
-  };
+  const homeLine: GameTeamStatLine = emptyTeamLine();
+  const awayLine: GameTeamStatLine = emptyTeamLine();
 
   const homeThirdDowns = { attempts: 0, conversions: 0 };
   const awayThirdDowns = { attempts: 0, conversions: 0 };
@@ -815,7 +801,7 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
   const drivesPerQuarterPerTeam = 3;
   const bigPlays: { team: string; quarter: number; yards: number }[] = [];
   let biggestSwing = { quarter: 1, delta: 0, team: "" };
-  const allPlays: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[] = [];
+  const allPlays: PlayDraft[] = [];
   let driveNumber = 0;
 
   function processDrive(offense: TeamContext, defense: TeamContext, offenseIsHome: boolean, quarter: number) {
@@ -861,7 +847,7 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
     // Kickoff return (after any score) or punt return (after a punt),
     // credited to whichever team is about to receive.
     const receivingTeam = offenseIsHome ? away : home;
-    let returnResult: { plays: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[]; points: number } | null = null;
+    let returnResult: { plays: PlayDraft[]; points: number } | null = null;
     if (result.points === 7 || result.points === 3) {
       driveNumber += 1;
       returnResult = simulateSpecialTeamsReturn("kick", receivingTeam, quarter, driveNumber, stats);
@@ -894,7 +880,7 @@ export function simulateGame(input: SimulateGameInput): SimulatedGameResult {
   // team that was on offense this drive gets the ball right back — without
   // this, the fixed alternating schedule would hand the ball to the team
   // that just scored on the return, which is backwards.
-  let homeStarts = (1 + 0) % 2 === 0; // preserves the original opening possession
+  let homeStarts = false; // away receives the opening kickoff (preserves prior behavior)
   for (let quarter = 1; quarter <= 4; quarter++) {
     for (let drive = 0; drive < drivesPerQuarterPerTeam; drive++) {
       const offense = homeStarts ? home : away;

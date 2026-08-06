@@ -1,4 +1,4 @@
-import type { PlayByPlayEntry, PlayType } from "@/types/football";
+import type { PlayDraft, PlayType } from "@/types/football";
 import type { RatedPlayer } from "./team-ratings";
 
 // Shared text-formatting helpers used by the down-by-down drive simulation
@@ -32,11 +32,33 @@ export interface ReturnPlayContext {
   isTouchdown: boolean;
 }
 
+/**
+ * The extra-point entry that follows every touchdown, whether it came off
+ * a normal drive or a kick/punt return. `kicker` is omitted for return
+ * touchdowns (the return play doesn't carry a specific kicker reference),
+ * which falls back to the same generic "The kicker" text it always has.
+ */
+export function extraPointPlay(quarter: number, driveNumber: number, offenseAbbr: string, kicker?: RatedPlayer): PlayDraft {
+  return {
+    quarter,
+    driveNumber,
+    offenseAbbr,
+    down: 0,
+    distance: 0,
+    yardLine: 98,
+    playType: "extra_point",
+    description: `${shortName(kicker, "The kicker")} extra point is good.`,
+    yards: 0,
+    isScoring: true,
+    isTurnover: false,
+  };
+}
+
 /** A kickoff/punt return following a score or punt — a standalone play, not a full drive. */
-export function generateReturnPlay(ctx: ReturnPlayContext): Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[] {
+export function generateReturnPlay(ctx: ReturnPlayContext): PlayDraft[] {
   const label = ctx.returnType === "kick" ? "kickoff" : "punt";
   const playType: PlayType = ctx.returnType === "kick" ? "kick_return" : "punt_return";
-  const entries: Omit<PlayByPlayEntry, "sequence" | "secondsRemaining">[] = [];
+  const entries: PlayDraft[] = [];
 
   entries.push({
     quarter: ctx.quarter,
@@ -55,19 +77,7 @@ export function generateReturnPlay(ctx: ReturnPlayContext): Omit<PlayByPlayEntry
   });
 
   if (ctx.isTouchdown) {
-    entries.push({
-      quarter: ctx.quarter,
-      driveNumber: ctx.driveNumber,
-      offenseAbbr: ctx.receivingAbbr,
-      down: 0,
-      distance: 0,
-      yardLine: 98,
-      playType: "extra_point",
-      description: "The kicker extra point is good.",
-      yards: 0,
-      isScoring: true,
-      isTurnover: false,
-    });
+    entries.push(extraPointPlay(ctx.quarter, ctx.driveNumber, ctx.receivingAbbr));
   }
 
   return entries;
