@@ -190,6 +190,27 @@ body {
   animation-timing-function: ease-in-out;
 }
 
+@keyframes goalpost-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+    filter: blur(4px);
+  }
+  35% {
+    opacity: 0.85;
+    transform: scale(1.15);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+    filter: blur(8px);
+  }
+}
+.goalpost-flash {
+  animation: goalpost-flash 900ms ease-out forwards;
+}
+
 @keyframes ball-shake {
   0%,
   100% {

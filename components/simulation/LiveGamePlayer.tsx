@@ -132,10 +132,22 @@ function ballPath(kind: MotionKind, fromX: number, toX: number): string {
   }
 }
 
+// A dedicated arc for kick attempts (field goal / extra point), which fly
+// from the snap spot all the way to the goalpost rather than stopping at
+// the line of scrimmage — landing dead center (toY 150) on a make, or
+// offset to one side of the posts on a miss.
+function fieldGoalArcPath(fromX: number, toX: number, toY: number): string {
+  const dx = toX - fromX;
+  const lift = Math.min(130, 55 + Math.abs(dx) * 0.22);
+  return `M${fromX},150 Q${(fromX + toX) / 2},${150 - lift} ${toX},${toY}`;
+}
+
 const ENDZONE_WIDTH = 80;
 const FIELD_WIDTH = 840;
 const TILT_DEG = 48;
 const PERSPECTIVE_PX = 1700;
+const GOALPOST_INSET_PCT = 1.5;
+const KICK_ATTEMPT_TYPES = new Set<PlayByPlayEntry["playType"]>(["field_goal", "missed_field_goal", "extra_point"]);
 
 // yardLine is stored relative to the offense's own goal line (0-100). The
 // field is drawn with the home team's goal line on the left and away's on
@@ -144,6 +156,13 @@ const PERSPECTIVE_PX = 1700;
 function absoluteFieldX(yardLine: number, offenseAbbr: string, homeAbbr: string): number {
   const absoluteYardLine = offenseAbbr === homeAbbr ? yardLine : 100 - yardLine;
   return ENDZONE_WIDTH + (absoluteYardLine / 100) * FIELD_WIDTH;
+}
+
+// Goalposts stand at the back of whichever end zone the kicking team is
+// driving toward — the opposite side of the field from their own goal line.
+function goalpostX(offenseAbbr: string, homeAbbr: string): number {
+  const insetX = (GOALPOST_INSET_PCT / 100) * 1000;
+  return offenseAbbr === homeAbbr ? 1000 - insetX : insetX;
 }
 
 function yardMarkerLabel(distanceFromLeftGoal: number): string {
@@ -223,6 +242,23 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   const motionDurationMs = Math.max(280, Math.round(SPEEDS[speed] * 0.7));
   const loftClass = kind === "kick" ? "ball-loft-big" : kind === "pass" ? "ball-loft" : kind === "sack" ? "ball-shake" : "";
   const shadowClass = kind === "kick" ? "shadow-loft-big" : kind === "pass" ? "shadow-loft" : "";
+
+  // Field goals/extra points fly to the actual goalpost instead of just the
+  // line of scrimmage — dead center through the posts on a make, offset to
+  // one side on a miss (side picked deterministically from the play so it
+  // doesn't flicker between re-renders).
+  const isKickAttempt = index >= 0 && KICK_ATTEMPT_TYPES.has(current.playType);
+  const kickTargetX = isKickAttempt ? goalpostX(current.offenseAbbr, home.abbreviation) : ballX;
+  const kickTargetY = isKickAttempt
+    ? current.isScoring
+      ? 150
+      : 150 + (current.sequence % 2 === 0 ? -42 : 42)
+    : 150;
+  const ballFlightPath = isKickAttempt ? fieldGoalArcPath(ballX, kickTargetX, kickTargetY) : ballPath(kind, prevBallX, ballX);
+  const shadowFlightPath = isKickAttempt
+    ? `M${ballX},158 L${kickTargetX},${kickTargetY + 8}`
+    : `M${prevBallX},158 L${ballX},158`;
+  const kickFlashSide: "left" | "right" | null = isKickAttempt && scoredThisPlay ? (offenseIsHome ? "right" : "left") : null;
 
   return (
     <Card className="flex flex-col gap-4 p-5">
@@ -309,7 +345,7 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
               {index >= 0 && (
                 <g key={`shadow-${index}`} className={shadowClass} style={{ animationDuration: `${motionDurationMs}ms` }}>
                   <ellipse rx="15" ry="5" fill="#000000" fillOpacity="0.4">
-                    <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={`M${prevBallX},158 L${ballX},158`} />
+                    <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={shadowFlightPath} />
                   </ellipse>
                 </g>
               )}
@@ -322,15 +358,15 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
                     <line x1="-3" y1="-3" x2="-3" y2="3" stroke="#fff" strokeWidth="1" />
                     <line x1="0" y1="-3" x2="0" y2="3" stroke="#fff" strokeWidth="1" />
                     <line x1="3" y1="-3" x2="3" y2="3" stroke="#fff" strokeWidth="1" />
-                    <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={ballPath(kind, prevBallX, ballX)} />
+                    <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={ballFlightPath} />
                   </g>
                 </g>
               )}
             </svg>
           </div>
 
-          <Goalpost xPct={1.5} tiltDeg={TILT_DEG} />
-          <Goalpost xPct={98.5} tiltDeg={TILT_DEG} />
+          <Goalpost xPct={GOALPOST_INSET_PCT} tiltDeg={TILT_DEG} flash={kickFlashSide === "left"} flashKey={index} />
+          <Goalpost xPct={100 - GOALPOST_INSET_PCT} tiltDeg={TILT_DEG} flash={kickFlashSide === "right"} flashKey={index} />
         </div>
       </div>
 
@@ -415,7 +451,17 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
 // counter-rotated by the field's own tilt around that same anchor. The net
 // effect is a goalpost that appears to stand straight up out of the turf
 // instead of lying flat in the tilted plane.
-function Goalpost({ xPct, tiltDeg }: { xPct: number; tiltDeg: number }) {
+function Goalpost({
+  xPct,
+  tiltDeg,
+  flash = false,
+  flashKey,
+}: {
+  xPct: number;
+  tiltDeg: number;
+  flash?: boolean;
+  flashKey?: number;
+}) {
   return (
     <div
       aria-hidden
@@ -428,6 +474,12 @@ function Goalpost({ xPct, tiltDeg }: { xPct: number; tiltDeg: number }) {
       }}
     >
       <div className="relative h-full w-full drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]">
+        {flash && (
+          <div
+            key={flashKey}
+            className="goalpost-flash absolute -inset-4 rounded-full bg-yellow-300"
+          />
+        )}
         <div className="absolute bottom-0 left-1/2 h-[62%] w-[3px] -translate-x-1/2 bg-gradient-to-t from-yellow-600 via-yellow-400 to-yellow-300" />
         <div className="absolute left-0 right-0 top-[38%] h-[3px] bg-gradient-to-r from-yellow-500 via-yellow-300 to-yellow-500" />
         <div className="absolute left-0 top-0 h-[40%] w-[3px] origin-bottom -rotate-[8deg] bg-yellow-400" />

@@ -21,6 +21,20 @@ function yardsLabel(yards: number) {
   return `${yards} yard${yards === 1 ? "" : "s"}`;
 }
 
+/** Appended to a run/completion's base sentence when a tackler was credited on the play. */
+function tackleSuffix(tackler?: RatedPlayer): string {
+  if (!tackler) return "";
+  const name = shortName(tackler);
+  return " " + pick([`Tackled by ${name}.`, `${name} makes the stop.`, `Brought down by ${name}.`]);
+}
+
+/** Appended to an incompletion when a defender was credited with the coverage. */
+function coverageSuffix(defender?: RatedPlayer): string {
+  if (!defender) return "";
+  const name = shortName(defender);
+  return " " + pick([`Tight coverage by ${name}.`, `${name} broke it up.`, `${name} was right there in coverage.`]);
+}
+
 // "a 8-yard pass" reads wrong — the indefinite article depends on how the
 // number is spoken, not its digits (eight, eleven, eighteen, and the
 // eighty-X's all start with a vowel sound).
@@ -37,32 +51,35 @@ export function article(n: number): "a" | "an" {
 // "break free" for a 2-yard gain).
 
 /** Non-touchdown run. */
-export function runPlayText(runner: RatedPlayer | undefined, yards: number): string {
+export function runPlayText(runner: RatedPlayer | undefined, yards: number, tackler?: RatedPlayer): string {
   const name = shortName(runner, "The running back");
-  if (yards < 0) {
-    return pick([
-      `${name} is dropped for a loss of ${Math.abs(yards)}.`,
-      `${name} is stuffed in the backfield for a loss of ${Math.abs(yards)}.`,
-    ]);
-  }
-  if (yards === 0) {
-    return pick([`${name} is stopped for no gain.`, `${name} is met immediately at the line for no gain.`]);
-  }
-  if (yards <= 4) {
-    return pick([
-      `${name} rushes for ${yardsLabel(yards)}.`,
-      `${name} picks up ${yardsLabel(yards)} up the middle.`,
-      `${name} squeezes out ${yardsLabel(yards)}.`,
-    ]);
-  }
-  if (yards <= 14) {
-    return pick([
-      `${name} carries it ${yardsLabel(yards)}.`,
-      `${name} finds a crease for ${yardsLabel(yards)}.`,
-      `${name} bounces it outside for ${yardsLabel(yards)}.`,
-    ]);
-  }
-  return pick([`${name} breaks free for ${yardsLabel(yards)}!`, `${name} bursts through the line for ${yardsLabel(yards)}!`]);
+  const base = (() => {
+    if (yards < 0) {
+      return pick([
+        `${name} is dropped for a loss of ${Math.abs(yards)}.`,
+        `${name} is stuffed in the backfield for a loss of ${Math.abs(yards)}.`,
+      ]);
+    }
+    if (yards === 0) {
+      return pick([`${name} is stopped for no gain.`, `${name} is met immediately at the line for no gain.`]);
+    }
+    if (yards <= 4) {
+      return pick([
+        `${name} rushes for ${yardsLabel(yards)}.`,
+        `${name} picks up ${yardsLabel(yards)} up the middle.`,
+        `${name} squeezes out ${yardsLabel(yards)}.`,
+      ]);
+    }
+    if (yards <= 14) {
+      return pick([
+        `${name} carries it ${yardsLabel(yards)}.`,
+        `${name} finds a crease for ${yardsLabel(yards)}.`,
+        `${name} bounces it outside for ${yardsLabel(yards)}.`,
+      ]);
+    }
+    return pick([`${name} breaks free for ${yardsLabel(yards)}!`, `${name} bursts through the line for ${yardsLabel(yards)}!`]);
+  })();
+  return base + tackleSuffix(tackler);
 }
 
 /** Rushing touchdown. Must never contain the substring "pass" — LiveGamePlayer's
@@ -78,28 +95,36 @@ export function runTouchdownText(runner: RatedPlayer | undefined, yards: number)
 }
 
 /** Completed, non-touchdown pass. */
-export function passPlayText(qb: RatedPlayer | undefined, receiver: RatedPlayer | undefined, yards: number): string {
+export function passPlayText(
+  qb: RatedPlayer | undefined,
+  receiver: RatedPlayer | undefined,
+  yards: number,
+  tackler?: RatedPlayer
+): string {
   const qbName = shortName(qb, "The QB");
   const recName = shortName(receiver, "the receiver");
-  if (yards <= 6) {
+  const base = (() => {
+    if (yards <= 6) {
+      return pick([
+        `${qbName} dumps it off to ${recName} for ${yardsLabel(yards)}.`,
+        `${qbName} finds ${recName} underneath for ${yardsLabel(yards)}.`,
+        `${qbName} pass complete to ${recName} for ${yardsLabel(yards)}.`,
+      ]);
+    }
+    if (yards <= 15) {
+      return pick([
+        `${qbName} connects with ${recName} for ${yardsLabel(yards)}.`,
+        `${qbName} hits ${recName} for ${yardsLabel(yards)}.`,
+        `${qbName} pass complete to ${recName} for ${yardsLabel(yards)}.`,
+      ]);
+    }
     return pick([
-      `${qbName} dumps it off to ${recName} for ${yardsLabel(yards)}.`,
-      `${qbName} finds ${recName} underneath for ${yardsLabel(yards)}.`,
-      `${qbName} pass complete to ${recName} for ${yardsLabel(yards)}.`,
+      `${qbName} airs it out to ${recName}, ${yardsLabel(yards)}!`,
+      `${qbName} finds ${recName} deep for ${yardsLabel(yards)}!`,
+      `${qbName} connects downfield with ${recName} for ${yardsLabel(yards)}!`,
     ]);
-  }
-  if (yards <= 15) {
-    return pick([
-      `${qbName} connects with ${recName} for ${yardsLabel(yards)}.`,
-      `${qbName} hits ${recName} for ${yardsLabel(yards)}.`,
-      `${qbName} pass complete to ${recName} for ${yardsLabel(yards)}.`,
-    ]);
-  }
-  return pick([
-    `${qbName} airs it out to ${recName}, ${yardsLabel(yards)}!`,
-    `${qbName} finds ${recName} deep for ${yardsLabel(yards)}!`,
-    `${qbName} connects downfield with ${recName} for ${yardsLabel(yards)}!`,
-  ]);
+  })();
+  return base + tackleSuffix(tackler);
 }
 
 /** Passing touchdown. Must always contain "pass" (see runTouchdownText note). */
@@ -114,16 +139,21 @@ export function passTouchdownText(qb: RatedPlayer | undefined, receiver: RatedPl
   ]);
 }
 
-export function incompletePlayText(qb: RatedPlayer | undefined, receiver: RatedPlayer | undefined): string {
+export function incompletePlayText(
+  qb: RatedPlayer | undefined,
+  receiver: RatedPlayer | undefined,
+  coverageDefender?: RatedPlayer
+): string {
   const qbName = shortName(qb, "The QB");
   const recName = shortName(receiver, "the receiver");
-  return pick([
+  const base = pick([
     `${qbName} pass incomplete, intended for ${recName}.`,
     `${qbName}'s pass to ${recName} falls incomplete.`,
     `${qbName} can't connect with ${recName}.`,
     `${recName} can't hang on, incomplete.`,
     `${qbName} sails it high, incomplete to ${recName}.`,
   ]);
+  return base + coverageSuffix(coverageDefender);
 }
 
 export function sackPlayText(qb: RatedPlayer | undefined, sacker: RatedPlayer | undefined, yards: number): string {

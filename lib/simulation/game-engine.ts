@@ -86,6 +86,15 @@ function maybeAssignTackler(
   return tackler;
 }
 
+// Picks who was "in coverage" for an incomplete-pass description — no stat
+// credited, this is flavor text only. Defensive backs first (realistic for
+// most routes), falling back to linebackers, then anyone on defense.
+function pickCoverageDefender(defense: TeamContext): RatedPlayer | undefined {
+  const backs = defense.defenders.filter((d) => d.position === "CB" || d.position === "FS" || d.position === "SS");
+  const linebackers = defense.defenders.filter((d) => d.position === "LOLB" || d.position === "MLB" || d.position === "ROLB");
+  return pickWeighted(backs.length > 0 ? backs : linebackers.length > 0 ? linebackers : defense.defenders);
+}
+
 function buildContext(name: string, abbr: string, players: RatedPlayer[]): TeamContext {
   const ratings = calculateTeamRatings(players);
   const qbPool = topPlayersAt(players, ["QB"], 3);
@@ -476,7 +485,7 @@ function simulateDrive(
         distance: before.distance,
         yardLine: Math.round(before.yardLine),
         playType: "run",
-        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${runPlayText(runner, yards)}`,
+        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${runPlayText(runner, yards, tackler)}`,
         yards,
         isScoring: false,
         isTurnover: false,
@@ -566,6 +575,7 @@ function simulateDrive(
         continue;
       }
       state.down += 1;
+      const coverageDefender = Math.random() < 0.65 ? pickCoverageDefender(defense) : undefined;
       plays.push({
         quarter,
         driveNumber,
@@ -574,7 +584,7 @@ function simulateDrive(
         distance: before.distance,
         yardLine: Math.round(before.yardLine),
         playType: "incomplete",
-        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${incompletePlayText(offense.qb, receiver)}`,
+        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${incompletePlayText(offense.qb, receiver, coverageDefender)}`,
         yards: 0,
         isScoring: false,
         isTurnover: false,
@@ -657,7 +667,7 @@ function simulateDrive(
       distance: before.distance,
       yardLine: Math.round(before.yardLine),
       playType: "pass",
-      description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${passPlayText(offense.qb, receiver, yards)}`,
+      description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${passPlayText(offense.qb, receiver, yards, tackler)}`,
       yards,
       isScoring: false,
       isTurnover: false,
