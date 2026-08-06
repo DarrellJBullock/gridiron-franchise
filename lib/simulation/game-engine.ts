@@ -9,7 +9,22 @@ import type {
 } from "@/types/football";
 import { calculateTeamRatings, type RatedPlayer } from "./team-ratings";
 import { topPlayersAt, PlayerStatAccumulator, selectTopPerformers } from "./player-stats";
-import { shortName, downLabel, fieldPosition, generateReturnPlay, extraPointPlay, randomInt } from "./play-by-play";
+import {
+  shortName,
+  downLabel,
+  fieldPosition,
+  generateReturnPlay,
+  extraPointPlay,
+  randomInt,
+  runPlayText,
+  runTouchdownText,
+  passPlayText,
+  passTouchdownText,
+  incompletePlayText,
+  sackPlayText,
+  interceptionPlayText,
+  article,
+} from "./play-by-play";
 
 // A franchise-style statistical simulation, not a physics engine — but every
 // drive is resolved down by down (not as one aggregate outcome with flavor
@@ -304,7 +319,7 @@ function simulateDrive(
           playType: outcome,
           description: `${downLabel(state.down)} & ${state.distance}: ${shortName(offense.kicker, "The kicker")} ${
             made ? "nails" : "misses"
-          } a ${fgDistance}-yard field goal attempt.`,
+          } ${article(fgDistance)} ${fgDistance}-yard field goal attempt.`,
           yards: 0,
           isScoring: made,
           isTurnover: false,
@@ -431,9 +446,7 @@ function simulateDrive(
           distance: before.distance,
           yardLine: Math.round(before.yardLine),
           playType: "touchdown",
-          description: `${downLabel(before.down)} & ${before.distance}: ${shortName(runner, "The running back")} rushes ${yards} yard${
-            yards === 1 ? "" : "s"
-          } for the touchdown!`,
+          description: `${downLabel(before.down)} & ${before.distance}: ${runTouchdownText(runner, yards)}`,
           yards,
           isScoring: true,
           isTurnover: false,
@@ -463,10 +476,7 @@ function simulateDrive(
         distance: before.distance,
         yardLine: Math.round(before.yardLine),
         playType: "run",
-        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${shortName(
-          runner,
-          "The running back"
-        )} rushes for ${yards} yard${yards === 1 ? "" : "s"}.`,
+        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${runPlayText(runner, yards)}`,
         yards,
         isScoring: false,
         isTurnover: false,
@@ -500,10 +510,7 @@ function simulateDrive(
         distance: before.distance,
         yardLine: Math.round(before.yardLine),
         playType: "sack",
-        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${shortName(
-          offense.qb,
-          "The QB"
-        )} is sacked by ${shortName(sacker, "the defense")} for a loss of ${Math.abs(yards)}.`,
+        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${sackPlayText(offense.qb, sacker, yards)}`,
         yards,
         isScoring: false,
         isTurnover: false,
@@ -531,10 +538,7 @@ function simulateDrive(
         distance: before.distance,
         yardLine: Math.round(before.yardLine),
         playType: "interception",
-        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${shortName(
-          offense.qb,
-          "The QB"
-        )} pass INTERCEPTED by ${shortName(interceptor, "the defense")}!`,
+        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${interceptionPlayText(offense.qb, interceptor)}`,
         yards: 0,
         isScoring: false,
         isTurnover: true,
@@ -570,10 +574,7 @@ function simulateDrive(
         distance: before.distance,
         yardLine: Math.round(before.yardLine),
         playType: "incomplete",
-        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${shortName(
-          offense.qb,
-          "The QB"
-        )} pass incomplete intended for ${shortName(receiver, "the receiver")}.`,
+        description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${incompletePlayText(offense.qb, receiver)}`,
         yards: 0,
         isScoring: false,
         isTurnover: false,
@@ -625,10 +626,7 @@ function simulateDrive(
         distance: before.distance,
         yardLine: Math.round(before.yardLine),
         playType: "touchdown",
-        description: `${downLabel(before.down)} & ${before.distance}: ${shortName(offense.qb, "The QB")} pass to ${shortName(
-          receiver,
-          "the receiver"
-        )}, ${yards} yard${yards === 1 ? "" : "s"}, TOUCHDOWN!`,
+        description: `${downLabel(before.down)} & ${before.distance}: ${passTouchdownText(offense.qb, receiver, yards)}`,
         yards,
         isScoring: true,
         isTurnover: false,
@@ -659,10 +657,7 @@ function simulateDrive(
       distance: before.distance,
       yardLine: Math.round(before.yardLine),
       playType: "pass",
-      description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${shortName(
-        offense.qb,
-        "The QB"
-      )} pass complete to ${shortName(receiver, "the receiver")} for ${yards} yard${yards === 1 ? "" : "s"}.`,
+      description: `${downLabel(before.down)} & ${before.distance} at the ${fieldPosition(before.yardLine)}: ${passPlayText(offense.qb, receiver, yards)}`,
       yards,
       isScoring: false,
       isTurnover: false,
