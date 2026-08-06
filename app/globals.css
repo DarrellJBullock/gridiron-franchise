@@ -154,6 +154,42 @@ body {
   animation-timing-function: ease-in-out;
 }
 
+@keyframes shadow-loft {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(0.55);
+    opacity: 0.18;
+  }
+}
+.shadow-loft {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-name: shadow-loft;
+  animation-timing-function: ease-in-out;
+}
+
+@keyframes shadow-loft-big {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(0.3);
+    opacity: 0.1;
+  }
+}
+.shadow-loft-big {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-name: shadow-loft-big;
+  animation-timing-function: ease-in-out;
+}
+
 @keyframes ball-shake {
   0%,
   100% {

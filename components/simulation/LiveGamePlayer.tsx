@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { TeamLogo } from "@/components/football/TeamLogo";
+import { homeCrowdReaction } from "@/lib/simulation/crowd-reaction";
+import { playCheer, playBoo, unlockCrowdAudio } from "@/lib/audio/crowd";
 import type { PlayByPlayEntry } from "@/types/football";
 
 interface LiveGamePlayerProps {
@@ -132,6 +134,8 @@ function ballPath(kind: MotionKind, fromX: number, toX: number): string {
 
 const ENDZONE_WIDTH = 80;
 const FIELD_WIDTH = 840;
+const TILT_DEG = 48;
+const PERSPECTIVE_PX = 1700;
 
 // yardLine is stored relative to the offense's own goal line (0-100). The
 // field is drawn with the home team's goal line on the left and away's on
@@ -152,7 +156,9 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   const [index, setIndex] = useState(-1);
   const [playing, setPlaying] = useState(autoPlay);
   const [speed, setSpeed] = useState<SpeedKey>("1x");
+  const [crowdEnabled, setCrowdEnabled] = useState(true);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reactedIndexRef = useRef(-1);
 
   const finished = index >= plays.length - 1;
 
@@ -165,6 +171,19 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [playing, finished, plays.length, speed, index]);
+
+  // Home-crowd cheer/boo reaction to whichever play we just landed on.
+  // Marking the index as "handled" happens regardless of the mute state so
+  // toggling crowd noise back on mid-game doesn't replay a stale reaction.
+  useEffect(() => {
+    if (index < 0 || reactedIndexRef.current === index) return;
+    reactedIndexRef.current = index;
+    if (!crowdEnabled) return;
+    const reaction = homeCrowdReaction(plays[index], home.abbreviation);
+    if (!reaction) return;
+    if (reaction.type === "cheer") playCheer(reaction.intensity);
+    else playBoo(reaction.intensity);
+  }, [index, crowdEnabled, plays, home.abbreviation]);
 
   const { homeScore, awayScore } = useMemo(() => {
     let h = 0;
@@ -203,6 +222,7 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   const kind = index >= 0 ? motionKind(current) : "straight";
   const motionDurationMs = Math.max(280, Math.round(SPEEDS[speed] * 0.7));
   const loftClass = kind === "kick" ? "ball-loft-big" : kind === "pass" ? "ball-loft" : kind === "sack" ? "ball-shake" : "";
+  const shadowClass = kind === "kick" ? "shadow-loft-big" : kind === "pass" ? "shadow-loft" : "";
 
   return (
     <Card className="flex flex-col gap-4 p-5">
@@ -223,68 +243,96 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
         </div>
       </div>
 
-      <svg viewBox="0 0 1000 300" className="w-full rounded-lg border border-border-line" role="img" aria-label="Field position">
-        <rect x="0" y="0" width="1000" height="300" fill="#14532d" />
-        <rect x="0" y="0" width={ENDZONE_WIDTH} height="300" fill={home.secondaryColor} fillOpacity="0.9" />
-        <rect x={1000 - ENDZONE_WIDTH} y="0" width={ENDZONE_WIDTH} height="300" fill={away.secondaryColor} fillOpacity="0.9" />
+      <div className="relative" style={{ perspective: `${PERSPECTIVE_PX}px` }}>
+        <div
+          className="relative mx-auto [transform-style:preserve-3d]"
+          style={{ transform: `rotateX(${TILT_DEG}deg)`, transformOrigin: "bottom center" }}
+        >
+          <div className="overflow-hidden rounded-lg border border-border-line shadow-[0_35px_60px_-15px_rgba(0,0,0,0.75)]">
+            <svg viewBox="0 0 1000 300" className="w-full" role="img" aria-label="Field position">
+              <defs>
+                <linearGradient id="turf" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#0f3d21" />
+                  <stop offset="55%" stopColor="#166534" />
+                  <stop offset="100%" stopColor="#1d7a3d" />
+                </linearGradient>
+              </defs>
+              <rect x="0" y="0" width="1000" height="300" fill="url(#turf)" />
+              <rect x="0" y="0" width={ENDZONE_WIDTH} height="300" fill={home.secondaryColor} fillOpacity="0.9" />
+              <rect x={1000 - ENDZONE_WIDTH} y="0" width={ENDZONE_WIDTH} height="300" fill={away.secondaryColor} fillOpacity="0.9" />
 
-        <g transform={`translate(8, ${(300 - 64) / 2})`}>
-          <TeamLogo seed={home.abbreviation} primaryColor={home.primaryColor} secondaryColor={home.secondaryColor} abbreviation={home.abbreviation} size={64} />
-        </g>
-        <g transform={`translate(${1000 - ENDZONE_WIDTH + 8}, ${(300 - 64) / 2})`}>
-          <TeamLogo seed={away.abbreviation} primaryColor={away.primaryColor} secondaryColor={away.secondaryColor} abbreviation={away.abbreviation} size={64} />
-        </g>
+              <g transform={`translate(8, ${(300 - 64) / 2})`}>
+                <TeamLogo seed={home.abbreviation} primaryColor={home.primaryColor} secondaryColor={home.secondaryColor} abbreviation={home.abbreviation} size={64} />
+              </g>
+              <g transform={`translate(${1000 - ENDZONE_WIDTH + 8}, ${(300 - 64) / 2})`}>
+                <TeamLogo seed={away.abbreviation} primaryColor={away.primaryColor} secondaryColor={away.secondaryColor} abbreviation={away.abbreviation} size={64} />
+              </g>
 
-        {Array.from({ length: 9 }, (_, i) => (i + 1) * 10).map((yard) => {
-          const x = ENDZONE_WIDTH + (yard / 100) * FIELD_WIDTH;
-          const label = yardMarkerLabel(yard);
-          return (
-            <g key={yard}>
-              <line x1={x} y1={0} x2={x} y2={300} stroke="#ffffff" strokeOpacity="0.35" strokeWidth="1.5" />
-              {label && (
-                <>
-                  <text x={x} y="40" textAnchor="middle" fontSize="18" fill="#ffffff" fillOpacity="0.6">
-                    {label}
-                  </text>
-                  <text x={x} y="272" textAnchor="middle" fontSize="18" fill="#ffffff" fillOpacity="0.6">
-                    {label}
-                  </text>
-                </>
+              {Array.from({ length: 9 }, (_, i) => (i + 1) * 10).map((yard) => {
+                const x = ENDZONE_WIDTH + (yard / 100) * FIELD_WIDTH;
+                const label = yardMarkerLabel(yard);
+                return (
+                  <g key={yard}>
+                    <line x1={x} y1={0} x2={x} y2={300} stroke="#ffffff" strokeOpacity="0.35" strokeWidth="1.5" />
+                    {label && (
+                      <>
+                        <text x={x} y="40" textAnchor="middle" fontSize="18" fill="#ffffff" fillOpacity="0.6">
+                          {label}
+                        </text>
+                        <text x={x} y="272" textAnchor="middle" fontSize="18" fill="#ffffff" fillOpacity="0.6">
+                          {label}
+                        </text>
+                      </>
+                    )}
+                  </g>
+                );
+              })}
+
+              {/* Line of scrimmage */}
+              {index >= 0 && (
+                <line x1={ballX} x2={ballX} y1={0} y2={300} stroke="#60a5fa" strokeWidth="2" strokeOpacity="0.75" strokeDasharray="5 5" />
               )}
-            </g>
-          );
-        })}
+              {/* First-down marker */}
+              {firstDownX !== null && (
+                <line x1={firstDownX} x2={firstDownX} y1={0} y2={300} stroke="#facc15" strokeWidth="2.5" strokeDasharray="7 4" />
+              )}
 
-        {/* Line of scrimmage */}
-        {index >= 0 && (
-          <line x1={ballX} x2={ballX} y1={0} y2={300} stroke="#60a5fa" strokeWidth="2" strokeOpacity="0.75" strokeDasharray="5 5" />
-        )}
-        {/* First-down marker */}
-        {firstDownX !== null && (
-          <line x1={firstDownX} x2={firstDownX} y1={0} y2={300} stroke="#facc15" strokeWidth="2.5" strokeDasharray="7 4" />
-        )}
+              {/* Penalty flag / scoring flash overlays — keyed by index so the CSS animation re-triggers every play */}
+              {index >= 0 && current.playType === "penalty" && (
+                <rect key={`penalty-${index}`} x="0" y="0" width="1000" height="300" fill="#facc15" fillOpacity="0.22" className="penalty-flash" pointerEvents="none" />
+              )}
+              {scoredThisPlay && (
+                <rect key={`score-${index}`} x="0" y="0" width="1000" height="300" fill="#f5a623" fillOpacity="0.28" className="score-flash" pointerEvents="none" />
+              )}
 
-        {/* Penalty flag / scoring flash overlays — keyed by index so the CSS animation re-triggers every play */}
-        {index >= 0 && current.playType === "penalty" && (
-          <rect key={`penalty-${index}`} x="0" y="0" width="1000" height="300" fill="#facc15" fillOpacity="0.22" className="penalty-flash" pointerEvents="none" />
-        )}
-        {scoredThisPlay && (
-          <rect key={`score-${index}`} x="0" y="0" width="1000" height="300" fill="#f5a623" fillOpacity="0.28" className="score-flash" pointerEvents="none" />
-        )}
+              {/* Ground shadow — shrinks/fades on lofted plays to sell height off the turf */}
+              {index >= 0 && (
+                <g key={`shadow-${index}`} className={shadowClass} style={{ animationDuration: `${motionDurationMs}ms` }}>
+                  <ellipse rx="15" ry="5" fill="#000000" fillOpacity="0.4">
+                    <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={`M${prevBallX},158 L${ballX},158`} />
+                  </ellipse>
+                </g>
+              )}
 
-        {index >= 0 && (
-          <g key={`ball-${index}`} className={scoredThisPlay ? "score-pop" : ""}>
-            <g className={loftClass} style={{ animationDuration: `${motionDurationMs}ms` }}>
-              <ellipse rx="14" ry="9" fill="#8B4513" stroke="#3a1f0a" strokeWidth="2" />
-              <line x1="-7" y1="0" x2="7" y2="0" stroke="#fff" strokeWidth="1.5" />
-              <line x1="-3" y1="-3" x2="-3" y2="3" stroke="#fff" strokeWidth="1" />
-              <line x1="0" y1="-3" x2="0" y2="3" stroke="#fff" strokeWidth="1" />
-              <line x1="3" y1="-3" x2="3" y2="3" stroke="#fff" strokeWidth="1" />
-              <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={ballPath(kind, prevBallX, ballX)} />
-            </g>
-          </g>
-        )}
-      </svg>
+              {index >= 0 && (
+                <g key={`ball-${index}`} className={scoredThisPlay ? "score-pop" : ""}>
+                  <g className={loftClass} style={{ animationDuration: `${motionDurationMs}ms` }}>
+                    <ellipse rx="14" ry="9" fill="#8B4513" stroke="#3a1f0a" strokeWidth="2" />
+                    <line x1="-7" y1="0" x2="7" y2="0" stroke="#fff" strokeWidth="1.5" />
+                    <line x1="-3" y1="-3" x2="-3" y2="3" stroke="#fff" strokeWidth="1" />
+                    <line x1="0" y1="-3" x2="0" y2="3" stroke="#fff" strokeWidth="1" />
+                    <line x1="3" y1="-3" x2="3" y2="3" stroke="#fff" strokeWidth="1" />
+                    <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={ballPath(kind, prevBallX, ballX)} />
+                  </g>
+                </g>
+              )}
+            </svg>
+          </div>
+
+          <Goalpost xPct={1.5} tiltDeg={TILT_DEG} />
+          <Goalpost xPct={98.5} tiltDeg={TILT_DEG} />
+        </div>
+      </div>
 
       <div className="flex items-start gap-2 rounded-lg border border-border-line bg-surface/60 px-4 py-3">
         <span className="text-lg">{index < 0 ? "🏈" : playIcon(current.playType)}</span>
@@ -312,10 +360,24 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setPlaying((p) => !p)}
+            onClick={() => {
+              unlockCrowdAudio();
+              setPlaying((p) => !p);
+            }}
             disabled={finished}
           >
             {finished ? "Finished" : playing ? "⏸ Pause" : "▶ Play"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              unlockCrowdAudio();
+              setCrowdEnabled((e) => !e);
+            }}
+            title="Toggle home crowd cheer/boo reactions"
+          >
+            {crowdEnabled ? "🔊 Crowd" : "🔇 Crowd"}
           </Button>
           {(Object.keys(SPEEDS) as SpeedKey[]).map((s) => (
             <Button
@@ -346,6 +408,32 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
         Play {Math.max(index + 1, 0)} of {plays.length}
       </p>
     </Card>
+  );
+}
+
+// A flat "billboard" anchored to the tilted field's bottom edge, then
+// counter-rotated by the field's own tilt around that same anchor. The net
+// effect is a goalpost that appears to stand straight up out of the turf
+// instead of lying flat in the tilted plane.
+function Goalpost({ xPct, tiltDeg }: { xPct: number; tiltDeg: number }) {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute z-10 h-16 w-14 md:h-24 md:w-20"
+      style={{
+        left: `${xPct}%`,
+        top: "50%",
+        transform: `translate(-50%, -100%) rotateX(${-tiltDeg}deg)`,
+        transformOrigin: "bottom center",
+      }}
+    >
+      <div className="relative h-full w-full drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]">
+        <div className="absolute bottom-0 left-1/2 h-[62%] w-[3px] -translate-x-1/2 bg-gradient-to-t from-yellow-600 via-yellow-400 to-yellow-300" />
+        <div className="absolute left-0 right-0 top-[38%] h-[3px] bg-gradient-to-r from-yellow-500 via-yellow-300 to-yellow-500" />
+        <div className="absolute left-0 top-0 h-[40%] w-[3px] origin-bottom -rotate-[8deg] bg-yellow-400" />
+        <div className="absolute right-0 top-0 h-[40%] w-[3px] origin-bottom rotate-[8deg] bg-yellow-400" />
+      </div>
+    </div>
   );
 }
 
