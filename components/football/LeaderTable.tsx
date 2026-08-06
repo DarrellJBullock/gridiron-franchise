@@ -4,22 +4,42 @@ import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/Table";
 import { PositionBadge } from "./PositionBadge";
 import type { Position } from "@/types/football";
 
-export interface StatLeaderRow {
+interface LeaderRowBase {
   playerId: string;
   playerName: string;
   position: Position;
   teamAbbreviation: string;
-  value: number;
 }
 
-export function StatLeaderTable({
+type ColumnTone = "muted" | "highlight" | "primary";
+
+const TONE_CLASS: Record<ColumnTone, string> = {
+  muted: "text-right tabular-nums text-text-muted",
+  highlight: "text-right font-bold tabular-nums text-accent",
+  primary: "text-right tabular-nums text-text-primary",
+};
+
+export interface LeaderTableColumn<T> {
+  label: string;
+  value: (row: T) => string | number;
+  /** Defaults to "muted". Use "highlight" for the category's headline stat. */
+  tone?: ColumnTone;
+}
+
+/**
+ * Generic leaderboard table: rank / player / position / team, plus
+ * whatever stat-specific columns the caller configures. Every "Stat
+ * Leaders" category (single-value like sacks, or multi-value like
+ * passing) renders through this one component.
+ */
+export function LeaderTable<T extends LeaderRowBase>({
   title,
-  unit,
   rows,
+  columns,
 }: {
   title: string;
-  unit: string;
-  rows: StatLeaderRow[];
+  rows: T[];
+  columns: LeaderTableColumn<T>[];
 }) {
   return (
     <Card className="p-5">
@@ -34,7 +54,11 @@ export function StatLeaderTable({
               <Th>Player</Th>
               <Th>Pos</Th>
               <Th>Team</Th>
-              <Th className="text-right">{unit}</Th>
+              {columns.map((col) => (
+                <Th key={col.label} className="text-right">
+                  {col.label}
+                </Th>
+              ))}
             </Tr>
           </Thead>
           <Tbody>
@@ -50,7 +74,11 @@ export function StatLeaderTable({
                   <PositionBadge position={row.position} />
                 </Td>
                 <Td className="text-text-muted">{row.teamAbbreviation}</Td>
-                <Td className="text-right font-bold tabular-nums text-accent">{row.value}</Td>
+                {columns.map((col) => (
+                  <Td key={col.label} className={TONE_CLASS[col.tone ?? "muted"]}>
+                    {col.value(row)}
+                  </Td>
+                ))}
               </Tr>
             ))}
           </Tbody>

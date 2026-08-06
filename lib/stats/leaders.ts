@@ -56,6 +56,13 @@ export interface PuntingLeaderRow {
   avg: number;
 }
 
+interface LeaderBase {
+  playerId: string;
+  playerName: string;
+  position: Position;
+  teamAbbreviation: string;
+}
+
 // Standard NFL passer rating formula — each of the four components is
 // clamped to [0, 2.375] before averaging, same as the official formula.
 function passerRating(attempts: number, completions: number, yards: number, touchdowns: number, interceptions: number): number {
@@ -124,40 +131,52 @@ export async function getStatLeaders(leagueId: string, seasonId?: string) {
   });
   const playerMap = new Map(players.map((p) => [p.id, p]));
 
-  function toRow(playerId: string, value: number): StatLeaderRow | null {
-    const player = playerMap.get(playerId);
-    if (!player) return null;
-    return {
-      playerId,
-      playerName: `${player.firstName} ${player.lastName}`,
-      position: player.position,
-      teamAbbreviation: player.team.abbreviation,
-      value,
-    };
-  }
-
-  function topBy(selector: (g: (typeof grouped)[number]) => number) {
+  // Shared map -> build-row -> drop-nulls -> sort-desc -> slice-top-N
+  // pipeline used by every leaderboard below, single-column or multi.
+  // `rowBuilder` receives the player's base fields already resolved, so
+  // it only computes the stat-specific fields and returns null when the
+  // player has none of this particular stat.
+  function buildLeaderboard<T>(
+    rowBuilder: (g: (typeof grouped)[number], base: LeaderBase) => T | null,
+    sortKey: (row: T) => number
+  ): T[] {
     return grouped
-      .map((g) => toRow(g.playerId, selector(g)))
-      .filter((row): row is StatLeaderRow => row !== null && row.value > 0)
-      .sort((a, b) => b.value - a.value)
+      .map((g) => {
+        const player = playerMap.get(g.playerId);
+        if (!player) return null;
+        const base: LeaderBase = {
+          playerId: g.playerId,
+          playerName: `${player.firstName} ${player.lastName}`,
+          position: player.position,
+          teamAbbreviation: player.team.abbreviation,
+        };
+        return rowBuilder(g, base);
+      })
+      .filter((row): row is T => row !== null)
+      .sort((a, b) => sortKey(b) - sortKey(a))
       .slice(0, TOP_N);
   }
 
-  const passing: PassingLeaderRow[] = grouped
-    .map((g): PassingLeaderRow | null => {
-      const player = playerMap.get(g.playerId);
+  function topBy(selector: (g: (typeof grouped)[number]) => number): StatLeaderRow[] {
+    return buildLeaderboard<StatLeaderRow>(
+      (g, base) => {
+        const value = selector(g);
+        return value > 0 ? { ...base, value } : null;
+      },
+      (row) => row.value
+    );
+  }
+
+  const passing = buildLeaderboard<PassingLeaderRow>(
+    (g, base) => {
       const yards = g._sum.passingYards ?? 0;
-      if (!player || yards <= 0) return null;
+      if (yards <= 0) return null;
       const attempts = g._sum.passingAttempts ?? 0;
       const completions = g._sum.passingCompletions ?? 0;
       const touchdowns = g._sum.passingTouchdowns ?? 0;
       const interceptions = g._sum.interceptions ?? 0;
       return {
-        playerId: g.playerId,
-        playerName: `${player.firstName} ${player.lastName}`,
-        position: player.position,
-        teamAbbreviation: player.team.abbreviation,
+        ...base,
         attempts,
         completions,
         yards,
@@ -165,72 +184,56 @@ export async function getStatLeaders(leagueId: string, seasonId?: string) {
         interceptions,
         rating: passerRating(attempts, completions, yards, touchdowns, interceptions),
       };
-    })
-    .filter((row): row is PassingLeaderRow => row !== null)
-    .sort((a, b) => b.yards - a.yards)
-    .slice(0, TOP_N);
+    },
+    (row) => row.yards
+  );
 
-  const rushing: RushingLeaderRow[] = grouped
-    .map((g): RushingLeaderRow | null => {
-      const player = playerMap.get(g.playerId);
+  const rushing = buildLeaderboard<RushingLeaderRow>(
+    (g, base) => {
       const yards = g._sum.rushingYards ?? 0;
-      if (!player || yards <= 0) return null;
+      if (yards <= 0) return null;
       const attempts = g._sum.rushingAttempts ?? 0;
       return {
-        playerId: g.playerId,
-        playerName: `${player.firstName} ${player.lastName}`,
-        position: player.position,
-        teamAbbreviation: player.team.abbreviation,
+        ...base,
         attempts,
         yards,
         avg: attempts > 0 ? Math.round((yards / attempts) * 10) / 10 : 0,
         touchdowns: g._sum.rushingTouchdowns ?? 0,
       };
-    })
-    .filter((row): row is RushingLeaderRow => row !== null)
-    .sort((a, b) => b.yards - a.yards)
-    .slice(0, TOP_N);
+    },
+    (row) => row.yards
+  );
 
-  const receiving: ReceivingLeaderRow[] = grouped
-    .map((g): ReceivingLeaderRow | null => {
-      const player = playerMap.get(g.playerId);
+  const receiving = buildLeaderboard<ReceivingLeaderRow>(
+    (g, base) => {
       const yards = g._sum.receivingYards ?? 0;
-      if (!player || yards <= 0) return null;
+      if (yards <= 0) return null;
       const receptions = g._sum.receptions ?? 0;
       return {
-        playerId: g.playerId,
-        playerName: `${player.firstName} ${player.lastName}`,
-        position: player.position,
-        teamAbbreviation: player.team.abbreviation,
+        ...base,
         receptions,
         yards,
         avg: receptions > 0 ? Math.round((yards / receptions) * 10) / 10 : 0,
         touchdowns: g._sum.receivingTouchdowns ?? 0,
       };
-    })
-    .filter((row): row is ReceivingLeaderRow => row !== null)
-    .sort((a, b) => b.yards - a.yards)
-    .slice(0, TOP_N);
+    },
+    (row) => row.yards
+  );
 
-  const punting: PuntingLeaderRow[] = grouped
-    .map((g): PuntingLeaderRow | null => {
-      const player = playerMap.get(g.playerId);
+  const punting = buildLeaderboard<PuntingLeaderRow>(
+    (g, base) => {
       const punts = g._sum.punts ?? 0;
-      if (!player || punts <= 0) return null;
+      if (punts <= 0) return null;
       const yards = g._sum.puntYards ?? 0;
       return {
-        playerId: g.playerId,
-        playerName: `${player.firstName} ${player.lastName}`,
-        position: player.position,
-        teamAbbreviation: player.team.abbreviation,
+        ...base,
         punts,
         yards,
         avg: Math.round((yards / punts) * 10) / 10,
       };
-    })
-    .filter((row): row is PuntingLeaderRow => row !== null)
-    .sort((a, b) => b.yards - a.yards)
-    .slice(0, TOP_N);
+    },
+    (row) => row.yards
+  );
 
   return {
     passing,
