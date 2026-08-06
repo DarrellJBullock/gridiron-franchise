@@ -8,11 +8,15 @@ interface ColumnDef {
 }
 
 const ALL_COLUMNS: ColumnDef[] = [
+  { key: "passingAttempts", label: "Pass Att" },
+  { key: "passingCompletions", label: "Comp" },
   { key: "passingYards", label: "Pass Yds" },
   { key: "passingTouchdowns", label: "Pass TD" },
   { key: "interceptions", label: "INT" },
+  { key: "rushingAttempts", label: "Rush Att" },
   { key: "rushingYards", label: "Rush Yds" },
   { key: "rushingTouchdowns", label: "Rush TD" },
+  { key: "receptions", label: "Rec" },
   { key: "receivingYards", label: "Rec Yds" },
   { key: "receivingTouchdowns", label: "Rec TD" },
   { key: "tackles", label: "Tkl" },
@@ -20,6 +24,8 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: "forcedFumbles", label: "FF" },
   { key: "interceptionsMade", label: "Def INT" },
   { key: "fieldGoalsMade", label: "FG" },
+  { key: "punts", label: "Punts" },
+  { key: "puntYards", label: "Punt Yds" },
   { key: "kickReturnYards", label: "KR Yds" },
   { key: "kickReturnTouchdowns", label: "KR TD" },
   { key: "puntReturnYards", label: "PR Yds" },

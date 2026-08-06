@@ -1,46 +1,49 @@
 import { prisma } from "@/lib/prisma";
 
-export interface PlayerSeasonStatLine {
+// Single source of truth for which GamePlayerStats columns get summed into
+// a season/career line. Adding a new tracked stat is a one-line change here
+// — the interface, the zeroed starting line, and both aggregation passes
+// (per-season, then career) all derive from this list instead of each
+// re-listing every field by hand.
+const STAT_FIELDS = [
+  "passingAttempts",
+  "passingCompletions",
+  "passingYards",
+  "passingTouchdowns",
+  "interceptions",
+  "rushingAttempts",
+  "rushingYards",
+  "rushingTouchdowns",
+  "receptions",
+  "receivingYards",
+  "receivingTouchdowns",
+  "tackles",
+  "sacks",
+  "forcedFumbles",
+  "interceptionsMade",
+  "fieldGoalsMade",
+  "punts",
+  "puntYards",
+  "kickReturnYards",
+  "kickReturnTouchdowns",
+  "puntReturnYards",
+  "puntReturnTouchdowns",
+] as const;
+
+type StatFields = Record<(typeof STAT_FIELDS)[number], number>;
+
+export interface PlayerSeasonStatLine extends StatFields {
   seasonId: string;
   seasonName: string;
   year: number;
   gamesPlayed: number;
-  passingYards: number;
-  passingTouchdowns: number;
-  interceptions: number;
-  rushingYards: number;
-  rushingTouchdowns: number;
-  receivingYards: number;
-  receivingTouchdowns: number;
-  tackles: number;
-  sacks: number;
-  forcedFumbles: number;
-  interceptionsMade: number;
-  fieldGoalsMade: number;
-  kickReturnYards: number;
-  kickReturnTouchdowns: number;
-  puntReturnYards: number;
-  puntReturnTouchdowns: number;
 }
 
-const EMPTY_LINE: Omit<PlayerSeasonStatLine, "seasonId" | "seasonName" | "year" | "gamesPlayed"> = {
-  passingYards: 0,
-  passingTouchdowns: 0,
-  interceptions: 0,
-  rushingYards: 0,
-  rushingTouchdowns: 0,
-  receivingYards: 0,
-  receivingTouchdowns: 0,
-  tackles: 0,
-  sacks: 0,
-  forcedFumbles: 0,
-  interceptionsMade: 0,
-  fieldGoalsMade: 0,
-  kickReturnYards: 0,
-  kickReturnTouchdowns: 0,
-  puntReturnYards: 0,
-  puntReturnTouchdowns: 0,
-};
+const EMPTY_LINE: StatFields = Object.fromEntries(STAT_FIELDS.map((field) => [field, 0])) as StatFields;
+
+function addStats(totals: StatFields, source: StatFields) {
+  for (const field of STAT_FIELDS) totals[field] += source[field];
+}
 
 /** Per-season stat lines for a player, newest season first, plus a career total. */
 export async function getPlayerSeasonStats(playerId: string): Promise<{
@@ -66,22 +69,7 @@ export async function getPlayerSeasonStats(playerId: string): Promise<{
       ...EMPTY_LINE,
     };
     line.gamesPlayed += 1;
-    line.passingYards += row.passingYards;
-    line.passingTouchdowns += row.passingTouchdowns;
-    line.interceptions += row.interceptions;
-    line.rushingYards += row.rushingYards;
-    line.rushingTouchdowns += row.rushingTouchdowns;
-    line.receivingYards += row.receivingYards;
-    line.receivingTouchdowns += row.receivingTouchdowns;
-    line.tackles += row.tackles;
-    line.sacks += row.sacks;
-    line.forcedFumbles += row.forcedFumbles;
-    line.interceptionsMade += row.interceptionsMade;
-    line.fieldGoalsMade += row.fieldGoalsMade;
-    line.kickReturnYards += row.kickReturnYards;
-    line.kickReturnTouchdowns += row.kickReturnTouchdowns;
-    line.puntReturnYards += row.puntReturnYards;
-    line.puntReturnTouchdowns += row.puntReturnTouchdowns;
+    addStats(line, row);
     bySeasonId.set(key, line);
   }
 
@@ -91,25 +79,11 @@ export async function getPlayerSeasonStats(playerId: string): Promise<{
   );
 
   const career = seasons.reduce(
-    (totals, s) => ({
-      gamesPlayed: totals.gamesPlayed + s.gamesPlayed,
-      passingYards: totals.passingYards + s.passingYards,
-      passingTouchdowns: totals.passingTouchdowns + s.passingTouchdowns,
-      interceptions: totals.interceptions + s.interceptions,
-      rushingYards: totals.rushingYards + s.rushingYards,
-      rushingTouchdowns: totals.rushingTouchdowns + s.rushingTouchdowns,
-      receivingYards: totals.receivingYards + s.receivingYards,
-      receivingTouchdowns: totals.receivingTouchdowns + s.receivingTouchdowns,
-      tackles: totals.tackles + s.tackles,
-      sacks: totals.sacks + s.sacks,
-      forcedFumbles: totals.forcedFumbles + s.forcedFumbles,
-      interceptionsMade: totals.interceptionsMade + s.interceptionsMade,
-      fieldGoalsMade: totals.fieldGoalsMade + s.fieldGoalsMade,
-      kickReturnYards: totals.kickReturnYards + s.kickReturnYards,
-      kickReturnTouchdowns: totals.kickReturnTouchdowns + s.kickReturnTouchdowns,
-      puntReturnYards: totals.puntReturnYards + s.puntReturnYards,
-      puntReturnTouchdowns: totals.puntReturnTouchdowns + s.puntReturnTouchdowns,
-    }),
+    (totals, s) => {
+      totals.gamesPlayed += s.gamesPlayed;
+      addStats(totals, s);
+      return totals;
+    },
     { gamesPlayed: 0, ...EMPTY_LINE }
   );
 
