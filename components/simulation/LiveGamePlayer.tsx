@@ -209,6 +209,7 @@ const OFFENSE_FORMATION = [
   { x: -2, y: 128 }, // WR (wide right)
   { x: 4, y: -96 }, // WR (slot)
 ] as const;
+const OFFENSE_ROLES = ["OL", "OL", "OL", "OL", "OL", "QB", "RB", "TE", "WR", "WR", "WR"] as const;
 
 const DEFENSE_FORMATION = [
   { x: 9, y: -30 }, // DL
@@ -223,24 +224,108 @@ const DEFENSE_FORMATION = [
   { x: 52, y: -38 }, // S
   { x: 52, y: 38 }, // S
 ] as const;
+const DEFENSE_ROLES = ["DL", "DL", "DL", "DL", "LB", "LB", "LB", "CB", "CB", "S", "S"] as const;
 
 interface FormationDot {
-  x: number;
-  y: number;
   key: string;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
+// How far (and which way, laterally) each role moves downfield over the
+// course of the play, in the same local-offset units as the formation
+// tables above — not a real route tree, just enough per-role variety to
+// read as "the play developed" instead of 22 players frozen at the snap.
+function extraMotion(role: string, kind: MotionKind, index: number): { x: number; y: number } {
+  switch (kind) {
+    case "pass":
+      switch (role) {
+        case "QB":
+          return { x: -8, y: 0 };
+        case "RB":
+          return { x: -3, y: 4 };
+        case "TE":
+          return { x: 16, y: 8 };
+        case "WR": {
+          const depth = [34, 22, 44][index % 3];
+          const lateral = [6, -8, -12][index % 3];
+          return { x: depth, y: lateral };
+        }
+        case "DL":
+          return { x: 11, y: 0 };
+        case "LB":
+          return { x: -3, y: 0 };
+        case "CB":
+          return { x: 32, y: 0 };
+        case "S":
+          return { x: 44, y: 0 };
+        default:
+          return { x: 2, y: 0 }; // OL: brief pass-set shuffle
+      }
+    case "run":
+      switch (role) {
+        case "QB":
+          return { x: 3, y: 0 };
+        case "TE":
+          return { x: 9, y: 0 };
+        case "WR":
+          return { x: 12, y: 0 };
+        case "DL":
+        case "LB":
+        case "CB":
+        case "S":
+          return { x: 6, y: 0 }; // pursuit angle; lateral convergence handled below
+        default:
+          return { x: 7, y: 0 }; // OL: drive block
+      }
+    case "sack":
+      switch (role) {
+        case "QB":
+          return { x: -10, y: 0 };
+        case "DL":
+          return { x: 13, y: 0 };
+        default:
+          return role === "OL" ? { x: -3, y: 0 } : { x: 0, y: 0 };
+      }
+    default:
+      return { x: 0, y: 0 };
+  }
+}
+
+// Defenders pull laterally toward the ball's lane as a run develops (or
+// toward the QB on a sack), rather than holding their pre-snap width.
+function lateralConvergence(role: string, kind: MotionKind): number {
+  if (kind === "run" && (role === "DL" || role === "LB" || role === "CB" || role === "S")) return 0.55;
+  if (kind === "sack" && role === "DL") return 0.35;
+  return 1;
+}
+
+function clampField(x: number, y: number) {
+  return {
+    x: Math.min(1000 - ENDZONE_WIDTH - 6, Math.max(ENDZONE_WIDTH + 6, x)),
+    y: Math.min(282, Math.max(18, y)),
+  };
 }
 
 function buildFormation(
   local: readonly { x: number; y: number }[],
-  ballX: number,
+  roles: readonly string[],
+  startBallX: number,
+  endBallX: number,
   forwardSign: 1 | -1,
+  kind: MotionKind,
   prefix: string
 ): FormationDot[] {
-  return local.map((p, i) => ({
-    x: Math.min(1000 - ENDZONE_WIDTH - 6, Math.max(ENDZONE_WIDTH + 6, ballX + forwardSign * p.x)),
-    y: Math.min(282, Math.max(18, 150 + p.y)),
-    key: `${prefix}-${i}`,
-  }));
+  return local.map((p, i) => {
+    const role = roles[i];
+    const extra = extraMotion(role, kind, i);
+    const conv = lateralConvergence(role, kind);
+    const start = clampField(startBallX + forwardSign * p.x, 150 + p.y);
+    const end = clampField(endBallX + forwardSign * (p.x + extra.x), 150 + p.y * conv + extra.y);
+    return { key: `${prefix}-${i}`, startX: start.x, startY: start.y, endX: end.x, endY: end.y };
+  });
 }
 
 interface BannerInfo {
@@ -363,8 +448,12 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   // Snap formation: offense always attacks toward +x when home, -x when away.
   const forwardSign: 1 | -1 = offenseIsHome ? 1 : -1;
   const showFormation = index >= 0 && FORMATION_PLAY_TYPES.has(current.playType);
-  const offenseDots = showFormation ? buildFormation(OFFENSE_FORMATION, prevBallX, forwardSign, `off-${index}`) : [];
-  const defenseDots = showFormation ? buildFormation(DEFENSE_FORMATION, prevBallX, forwardSign, `def-${index}`) : [];
+  const offenseDots = showFormation
+    ? buildFormation(OFFENSE_FORMATION, OFFENSE_ROLES, prevBallX, ballX, forwardSign, kind, `off-${index}`)
+    : [];
+  const defenseDots = showFormation
+    ? buildFormation(DEFENSE_FORMATION, DEFENSE_ROLES, prevBallX, ballX, forwardSign, kind, `def-${index}`)
+    : [];
   const ballCarrierRuns = kind === "run" && current.playType !== "sack";
 
   const banner = index >= 0 ? bannerFor(current, offenseTeam.primaryColor, defenseTeam.primaryColor) : null;
@@ -511,12 +600,32 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
                   <line x1={firstDownX} x2={firstDownX} y1={0} y2={300} stroke="#facc15" strokeWidth="2.5" strokeDasharray="7 4" />
                 )}
 
-                {/* Pre-snap formation: 11-on-11 dots set at the line for scrimmage downs */}
+                {/* Formation: 11-on-11 dots set at the line, then run routes/blocks/pursuit
+                    over the play's duration so the field shows a developing play, not a
+                    frozen snap photo. */}
                 {offenseDots.map((d) => (
-                  <PlayerDot key={d.key} x={d.x} y={d.y} color={offenseTeam.primaryColor} ring={offenseTeam.secondaryColor} />
+                  <PlayerDot
+                    key={d.key}
+                    startX={d.startX}
+                    startY={d.startY}
+                    endX={d.endX}
+                    endY={d.endY}
+                    durationMs={motionDurationMs}
+                    color={offenseTeam.primaryColor}
+                    ring={offenseTeam.secondaryColor}
+                  />
                 ))}
                 {defenseDots.map((d) => (
-                  <PlayerDot key={d.key} x={d.x} y={d.y} color={defenseTeam.primaryColor} ring={defenseTeam.secondaryColor} />
+                  <PlayerDot
+                    key={d.key}
+                    startX={d.startX}
+                    startY={d.startY}
+                    endX={d.endX}
+                    endY={d.endY}
+                    durationMs={motionDurationMs}
+                    color={defenseTeam.primaryColor}
+                    ring={defenseTeam.secondaryColor}
+                  />
                 ))}
 
                 {/* Penalty flag / scoring flash overlays — keyed by index so the CSS animation re-triggers every play */}
@@ -673,12 +782,32 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   );
 }
 
-// A single pre-snap player marker: a jersey-colored dot with a thin ring in
-// the team's secondary color, matching the flat SVG plane the ball/turf sit
-// on so it inherits the same 3D field tilt for free.
-function PlayerDot({ x, y, color, ring }: { x: number; y: number; color: string; ring: string }) {
+// A single player marker: a jersey-colored dot with a thin ring in the
+// team's secondary color, matching the flat SVG plane the ball/turf sit on
+// so it inherits the same 3D field tilt for free. Rides a straight
+// <animateMotion> path from its pre-snap spot to where the play leaves it
+// (a route run, a block, a pursuit angle), timed with the ball.
+function PlayerDot({
+  startX,
+  startY,
+  endX,
+  endY,
+  durationMs,
+  color,
+  ring,
+}: {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  durationMs: number;
+  color: string;
+  ring: string;
+}) {
   return (
-    <circle cx={x} cy={y} r="6" fill={color} stroke={ring} strokeWidth="1.5" fillOpacity="0.92" />
+    <circle cx={startX} cy={startY} r="6" fill={color} stroke={ring} strokeWidth="1.5" fillOpacity="0.92">
+      <animateMotion dur={`${durationMs}ms`} fill="freeze" path={`M${startX},${startY} L${endX},${endY}`} />
+    </circle>
   );
 }
 
