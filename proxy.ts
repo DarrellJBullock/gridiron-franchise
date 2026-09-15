@@ -24,5 +24,10 @@ export const config = {
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     // Always run for API routes
     "/(api|trpc)(.*)",
+    // Always run for Clerk's Frontend API proxy path (production instances
+    // proxy Clerk's script/API through this domain at /__clerk/*, and those
+    // requests end in extensions like .js that the static-file skip above
+    // would otherwise exclude from ever reaching clerkMiddleware).
+    "/__clerk(.*)",
   ],
 };
