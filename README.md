@@ -30,6 +30,7 @@ cohesive sports-broadcast-style dashboard UI — all original IP so it's safe to
 - **Zod** for schema validation (0-100 rating ranges, position enums, jersey numbers, etc.)
 - **ExcelJS** for generating and parsing the roster upload template
 - **Recharts** for the player ratings radar chart
+- **Sentry** for error monitoring (client, server, and edge runtimes)
 - Vercel-ready deployment configuration
 
 ## Features
@@ -254,6 +255,37 @@ unique `ownerId` on the `League` model), auto-generated the first time you sign 
 API route and page is scoped to the signed-in user's own league, and looking up another user's game, team,
 or player by ID returns a 404 rather than leaking data. There is no shared "global" league anymore; each
 account's franchise is fully private.
+
+## Monitoring & Error Tracking (Sentry)
+
+Error monitoring runs through [Sentry](https://sentry.io), installed as a Vercel Marketplace integration
+(org `darrell-bullock`, project `sentry-bistre-yacht` — see `next.config.ts`) rather than a hand-wired
+SDK. It covers all three Next.js runtimes:
+
+- `instrumentation.ts` loads `sentry.server.config.ts` (Node runtime) and `sentry.edge.config.ts` (edge
+  runtime — middleware, edge routes) at startup
+- `instrumentation-client.ts` initializes Sentry in the browser, with Session Replay enabled
+- `app/global-error.tsx` is a global React error boundary that reports uncaught render errors
+- `next.config.ts` wraps the app with `withSentryConfig`, which uploads source maps at build time (using
+  the `SENTRY_AUTH_TOKEN` / `.env.sentry-build-plugin` that Vercel's integration provisions) so stack
+  traces in Sentry show real file/line info instead of minified bundles
+
+**The tunnel route matters for auth.** Client-side error/session reports are sent through a same-origin
+tunnel at `/monitoring` (configured via `tunnelRoute` in `next.config.ts`) instead of directly to Sentry's
+domain, so ad blockers don't silently swallow them. Because this app's `proxy.ts` middleware is
+fail-closed (everything requires sign-in unless explicitly allow-listed), `/monitoring` —
+along with `/sentry-example-page` and `/api/sentry-example-api` — is explicitly listed as a public route.
+**If you ever tighten or rewrite the auth middleware, keep that route public**, or error reporting for
+every signed-out visitor (which is most first-time traffic) silently breaks with no error of its own.
+
+**To verify it's working:** visit `/sentry-example-page` and click **Throw Sample Error** — it should show
+"Error sent to Sentry" and the error should appear on the
+[Sentry Issues page](https://darrell-bullock.sentry.io/issues/?project=4512092251226112) within a few
+seconds.
+
+**Environment variables** (auto-provisioned by the Vercel Marketplace integration, pulled into
+`.env.local` via `vercel env pull`): `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`,
+`SENTRY_PROJECT`. None of these need to be set by hand.
 
 ## Screenshots
 
