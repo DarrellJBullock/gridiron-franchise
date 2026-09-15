@@ -10,6 +10,12 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/roster/template",
+  // Sentry's error-reporting tunnel (next.config.ts tunnelRoute) and the
+  // manual test page — client-side error/session data must reach Sentry
+  // even for signed-out visitors, not get bounced to sign-in.
+  "/monitoring(.*)",
+  "/sentry-example-page",
+  "/api/sentry-example-api",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
