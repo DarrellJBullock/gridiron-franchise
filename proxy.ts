@@ -49,5 +49,11 @@ export const config = {
     // requests end in extensions like .js that the static-file skip above
     // would otherwise exclude from ever reaching clerkMiddleware).
     "/__clerk(.*)",
+    // Every browser auto-requests /favicon.ico. This app has no such file
+    // (it uses icon.svg), so Next.js falls through to a full page render —
+    // including the root layout's auth() call — for it. The static-file
+    // skip above excludes .ico, so that render was happening with no
+    // clerkMiddleware context and throwing on every single page load.
+    "/favicon.ico",
   ],
 };
