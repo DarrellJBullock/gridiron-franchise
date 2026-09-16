@@ -166,42 +166,139 @@ function goalpostX(offenseAbbr: string, homeAbbr: string): number {
 // direction of attack (local +x = downfield for the offense) and across the
 // hash (local y, field center = 0). Not a real playbook — just enough shape
 // to read as "11 players set at the line" the way a broadcast wide shot does.
-const OFFENSE_FORMATION = [
-  { x: 3, y: -42 }, // LT
-  { x: 3, y: -21 }, // LG
-  { x: 3, y: 0 }, // C
-  { x: 3, y: 21 }, // RG
-  { x: 3, y: 42 }, // RT
-  { x: -16, y: 0 }, // QB
-  { x: -30, y: 10 }, // RB
-  { x: 3, y: 62 }, // TE
-  { x: -2, y: -128 }, // WR (wide left)
-  { x: -2, y: 128 }, // WR (wide right)
-  { x: 4, y: -96 }, // WR (slot)
-] as const;
-const OFFENSE_ROLES = ["OL", "OL", "OL", "OL", "OL", "QB", "RB", "TE", "WR", "WR", "WR"] as const;
+//
+// Real teams change personnel and spacing by situation — short yardage packs
+// extra blockers into the box, obvious passing downs spread receivers wide —
+// and the defense counters each look. These are three representative shapes,
+// picked by down/distance/field position in selectFormationVariant below.
+type FormationVariant = "base" | "spread" | "goalLine";
 
-const DEFENSE_FORMATION = [
-  { x: 9, y: -30 }, // DL
-  { x: 9, y: -10 },
-  { x: 9, y: 10 },
-  { x: 9, y: 30 }, // DL
-  { x: 26, y: -26 }, // LB
-  { x: 26, y: 0 }, // LB
-  { x: 26, y: 26 }, // LB
-  { x: 17, y: -118 }, // CB
-  { x: 17, y: 118 }, // CB
-  { x: 52, y: -38 }, // S
-  { x: 52, y: 38 }, // S
-] as const;
-const DEFENSE_ROLES = ["DL", "DL", "DL", "DL", "LB", "LB", "LB", "CB", "CB", "S", "S"] as const;
+interface FormationSlot {
+  x: number;
+  y: number;
+  role: string;
+}
+
+const OFFENSE_BASE: readonly FormationSlot[] = [
+  { x: 3, y: -42, role: "OL" },
+  { x: 3, y: -21, role: "OL" },
+  { x: 3, y: 0, role: "OL" },
+  { x: 3, y: 21, role: "OL" },
+  { x: 3, y: 42, role: "OL" },
+  { x: -16, y: 0, role: "QB" },
+  { x: -30, y: 10, role: "RB" },
+  { x: 3, y: 62, role: "TE" },
+  { x: -2, y: -128, role: "WR" },
+  { x: -2, y: 128, role: "WR" },
+  { x: 4, y: -96, role: "WR" },
+];
+
+// Obvious passing downs: 4 wide, QB in shotgun, no in-line TE.
+const OFFENSE_SPREAD: readonly FormationSlot[] = [
+  { x: 3, y: -42, role: "OL" },
+  { x: 3, y: -21, role: "OL" },
+  { x: 3, y: 0, role: "OL" },
+  { x: 3, y: 21, role: "OL" },
+  { x: 3, y: 42, role: "OL" },
+  { x: -20, y: 0, role: "QB" },
+  { x: -28, y: 14, role: "RB" },
+  { x: -2, y: -150, role: "WR" },
+  { x: -2, y: 150, role: "WR" },
+  { x: 4, y: -104, role: "WR" },
+  { x: 4, y: 104, role: "WR" },
+];
+
+// Short yardage / goal-to-go: extra blocking with an FB and two in-line TEs,
+// QB under center, one receiver split out.
+const OFFENSE_GOAL_LINE: readonly FormationSlot[] = [
+  { x: 3, y: -42, role: "OL" },
+  { x: 3, y: -21, role: "OL" },
+  { x: 3, y: 0, role: "OL" },
+  { x: 3, y: 21, role: "OL" },
+  { x: 3, y: 42, role: "OL" },
+  { x: -12, y: 0, role: "QB" },
+  { x: -22, y: -8, role: "FB" },
+  { x: -26, y: 10, role: "RB" },
+  { x: 3, y: 58, role: "TE" },
+  { x: 3, y: -58, role: "TE" },
+  { x: -2, y: 100, role: "WR" },
+];
+
+const DEFENSE_BASE: readonly FormationSlot[] = [
+  { x: 9, y: -30, role: "DL" },
+  { x: 9, y: -10, role: "DL" },
+  { x: 9, y: 10, role: "DL" },
+  { x: 9, y: 30, role: "DL" },
+  { x: 26, y: -26, role: "LB" },
+  { x: 26, y: 0, role: "LB" },
+  { x: 26, y: 26, role: "LB" },
+  { x: 17, y: -118, role: "CB" },
+  { x: 17, y: 118, role: "CB" },
+  { x: 52, y: -38, role: "S" },
+  { x: 52, y: 38, role: "S" },
+];
+
+// Nickel: a 3rd CB replaces a LB to match the offense's extra receiver.
+const DEFENSE_NICKEL: readonly FormationSlot[] = [
+  { x: 9, y: -30, role: "DL" },
+  { x: 9, y: -10, role: "DL" },
+  { x: 9, y: 10, role: "DL" },
+  { x: 9, y: 30, role: "DL" },
+  { x: 26, y: -16, role: "LB" },
+  { x: 26, y: 16, role: "LB" },
+  { x: 17, y: -118, role: "CB" },
+  { x: 17, y: 118, role: "CB" },
+  { x: 20, y: -70, role: "CB" },
+  { x: 52, y: -38, role: "S" },
+  { x: 52, y: 38, role: "S" },
+];
+
+// Goal-line stack: an extra DL and LB crowd the box, only one deep safety.
+const DEFENSE_GOAL_LINE: readonly FormationSlot[] = [
+  { x: 7, y: -36, role: "DL" },
+  { x: 7, y: -18, role: "DL" },
+  { x: 7, y: 0, role: "DL" },
+  { x: 7, y: 18, role: "DL" },
+  { x: 7, y: 36, role: "DL" },
+  { x: 20, y: -20, role: "LB" },
+  { x: 20, y: 0, role: "LB" },
+  { x: 20, y: 20, role: "LB" },
+  { x: 14, y: -70, role: "CB" },
+  { x: 14, y: 70, role: "CB" },
+  { x: 34, y: 0, role: "S" },
+];
+
+const OFFENSE_FORMATIONS: Record<FormationVariant, readonly FormationSlot[]> = {
+  base: OFFENSE_BASE,
+  spread: OFFENSE_SPREAD,
+  goalLine: OFFENSE_GOAL_LINE,
+};
+const DEFENSE_FORMATIONS: Record<FormationVariant, readonly FormationSlot[]> = {
+  base: DEFENSE_BASE,
+  spread: DEFENSE_NICKEL,
+  goalLine: DEFENSE_GOAL_LINE,
+};
+
+// Short yardage/goal-to-go situations pack extra blockers into the box;
+// long-yardage/passing downs spread receivers out. Anything else runs the
+// base personnel grouping.
+function selectFormationVariant(down: number, distance: number, yardLine: number): FormationVariant {
+  const goalToGo = yardLine >= 90;
+  const shortYardage = distance <= 2 && down >= 2;
+  if (goalToGo || shortYardage) return "goalLine";
+  if (distance >= 7 && down >= 2) return "spread";
+  return "base";
+}
 
 interface FormationDot {
   key: string;
+  role: string;
   startX: number;
   startY: number;
   endX: number;
   endY: number;
+  viaX?: number;
+  viaY?: number;
 }
 
 // How far (and which way, laterally) each role moves downfield over the
@@ -280,8 +377,7 @@ function clampField(x: number, y: number) {
 }
 
 function buildFormation(
-  local: readonly { x: number; y: number }[],
-  roles: readonly string[],
+  local: readonly FormationSlot[],
   startBallX: number,
   endBallX: number,
   forwardSign: 1 | -1,
@@ -289,12 +385,25 @@ function buildFormation(
   prefix: string
 ): FormationDot[] {
   return local.map((p, i) => {
-    const role = roles[i];
+    const role = p.role;
     const extra = extraMotion(role, kind, i);
     const conv = lateralConvergence(role, kind);
     const start = clampField(startBallX + forwardSign * p.x, 150 + p.y);
     const end = clampField(endBallX + forwardSign * (p.x + extra.x), 150 + p.y * conv + extra.y);
-    return { key: `${prefix}-${i}`, startX: start.x, startY: start.y, endX: end.x, endY: end.y };
+    // Receivers run a route, not a straight line: hold their stem lateral
+    // for the first ~60% of the play, then break to the final landing spot.
+    const isRoute = kind === "pass" && (role === "WR" || role === "TE");
+    const via = isRoute ? clampField(start.x + (end.x - start.x) * 0.6, start.y) : null;
+    return {
+      key: `${prefix}-${i}`,
+      role,
+      startX: start.x,
+      startY: start.y,
+      endX: end.x,
+      endY: end.y,
+      viaX: via?.x,
+      viaY: via?.y,
+    };
   });
 }
 
@@ -416,11 +525,12 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   // Snap formation: offense always attacks toward +x when home, -x when away.
   const forwardSign: 1 | -1 = offenseIsHome ? 1 : -1;
   const showFormation = index >= 0 && FORMATION_PLAY_TYPES.has(current.playType);
+  const formationVariant = selectFormationVariant(current.down, current.distance, current.yardLine);
   const offenseDots = showFormation
-    ? buildFormation(OFFENSE_FORMATION, OFFENSE_ROLES, prevBallX, ballX, forwardSign, kind, `off-${index}`)
+    ? buildFormation(OFFENSE_FORMATIONS[formationVariant], prevBallX, ballX, forwardSign, kind, `off-${index}`)
     : [];
   const defenseDots = showFormation
-    ? buildFormation(DEFENSE_FORMATION, DEFENSE_ROLES, prevBallX, ballX, forwardSign, kind, `def-${index}`)
+    ? buildFormation(DEFENSE_FORMATIONS[formationVariant], prevBallX, ballX, forwardSign, kind, `def-${index}`)
     : [];
   const ballCarrierRuns = kind === "run" && current.playType !== "sack";
 
@@ -435,6 +545,28 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
         }).key
       : null;
 
+  // A pass targets an actual receiver rather than a generic midfield spot:
+  // whichever eligible receiver's route ends closest to where the play's
+  // real result landed is treated as the intended target. Interceptions
+  // instead target the nearest defensive back/safety, so the ball visibly
+  // travels to the man who made the pick.
+  const eligibleReceivers = kind === "pass" ? offenseDots.filter((d) => d.role === "WR" || d.role === "TE") : [];
+  const targetReceiver =
+    current.playType !== "interception" && eligibleReceivers.length > 0
+      ? eligibleReceivers.reduce((closest, d) => (Math.abs(d.endX - ballX) < Math.abs(closest.endX - ballX) ? d : closest))
+      : null;
+  const coverageDefenders = kind === "pass" ? defenseDots.filter((d) => d.role === "CB" || d.role === "S") : [];
+  const interceptor =
+    current.playType === "interception" && coverageDefenders.length > 0
+      ? coverageDefenders.reduce((closest, d) => {
+          const dist = Math.hypot(d.endX - ballX, d.endY - 150);
+          const closestDist = Math.hypot(closest.endX - ballX, closest.endY - 150);
+          return dist < closestDist ? d : closest;
+        })
+      : null;
+  const passTargetX = interceptor?.endX ?? targetReceiver?.endX ?? ballX;
+  const passTargetY = interceptor?.endY ?? targetReceiver?.endY ?? 150;
+
   const players3D: PlayerMotion[] = [
     ...offenseDots.map((d) => ({
       key: d.key,
@@ -444,6 +576,8 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
       endY: d.endY,
       color: offenseTeam.primaryColor,
       ring: offenseTeam.secondaryColor,
+      viaX: d.viaX,
+      viaY: d.viaY,
     })),
     ...defenseDots.map((d) => ({
       key: d.key,
@@ -499,8 +633,8 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
             kickMissed={kickMissed}
             motionDurationMs={motionDurationMs}
             ballFromX={prevBallX}
-            ballToX={isKickAttempt ? kickTargetX : ballX}
-            ballToY={isKickAttempt ? kickTargetY : 150}
+            ballToX={isKickAttempt ? kickTargetX : kind === "pass" ? passTargetX : ballX}
+            ballToY={isKickAttempt ? kickTargetY : kind === "pass" ? passTargetY : 150}
             lineOfScrimmageX={index >= 0 ? ballX : null}
             firstDownX={firstDownX}
             players={players3D}
