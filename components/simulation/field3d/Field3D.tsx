@@ -27,6 +27,11 @@ export interface PlayerMotion {
   color: string;
   ring: string;
   isTackler?: boolean;
+  isCarrier?: boolean;
+  // A route break: the player runs straight toward (viaX, viaY) first, then
+  // cuts to (endX, endY) — an L-shaped route instead of a straight lerp.
+  viaX?: number;
+  viaY?: number;
 }
 
 export type MotionKind = "pass" | "run" | "sack" | "kick" | "straight";
@@ -221,6 +226,22 @@ function PlayerMesh({
     () => new THREE.Vector3(toWorldX(motion.endX), 0, toWorldZ(motion.endY)),
     [motion.endX, motion.endY]
   );
+  const via = useMemo(
+    () =>
+      motion.viaX !== undefined && motion.viaY !== undefined
+        ? new THREE.Vector3(toWorldX(motion.viaX), 0, toWorldZ(motion.viaY))
+        : null,
+    [motion.viaX, motion.viaY]
+  );
+
+  const posAt = (t: number) => {
+    if (!via) return new THREE.Vector3().lerpVectors(start, end, t);
+    // Quadratic Bezier through the route's break point — a rounded cut
+    // rather than a straight lerp or a sharp corner.
+    const a = new THREE.Vector3().lerpVectors(start, via, t);
+    const b = new THREE.Vector3().lerpVectors(via, end, t);
+    return a.lerp(b, t);
+  };
 
   useFrame((state) => {
     if (startedAt.current === 0) startedAt.current = state.clock.elapsedTime;
@@ -229,9 +250,20 @@ function PlayerMesh({
     const eased = 1 - Math.pow(1 - progress, 2);
     const g = groupRef.current;
     if (!g) return;
-    g.position.lerpVectors(start, end, eased);
+    const pos = posAt(eased);
+    g.position.x = pos.x;
+    g.position.z = pos.z;
 
     const moving = progress < 1;
+    if (moving && motion.isCarrier) {
+      const nextPos = posAt(Math.min(1, eased + 0.02));
+      const dx = nextPos.x - pos.x;
+      const dz = nextPos.z - pos.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const juke = Math.sin(state.clock.elapsedTime * 6) * 0.5;
+      g.position.x += (-dz / len) * juke;
+      g.position.z += (dx / len) * juke;
+    }
     const bob = moving ? Math.abs(Math.sin(state.clock.elapsedTime * 9)) * 0.22 : 0;
     g.position.y = bob;
 
@@ -239,8 +271,8 @@ function PlayerMesh({
     if (body) {
       if (moving) {
         body.rotation.z = Math.sin(state.clock.elapsedTime * 9) * 0.12;
-        const dir = Math.atan2(end.x - start.x, end.z - start.z);
-        body.rotation.y = dir;
+        const nextPos = posAt(Math.min(1, eased + 0.05));
+        body.rotation.y = Math.atan2(nextPos.x - pos.x, nextPos.z - pos.z);
       } else if (fallOnImpact && !fallen.current) {
         fallen.current = true;
       }
@@ -392,6 +424,7 @@ export function Field3D({
                 endY: ballToY,
                 color: "#eab308",
                 ring: "#1f2937",
+                isCarrier: true,
               }}
               durationMs={motionDurationMs}
               playIndex={playIndex}
