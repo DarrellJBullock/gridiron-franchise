@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 // Fail-closed: only these routes are reachable while signed out. Everything
@@ -18,7 +19,20 @@ const isPublicRoute = createRouteMatcher([
   "/api/sentry-example-api",
 ]);
 
+// Clerk's production instance only trusts gridironfranchise.app as its
+// origin — visiting the old default *.vercel.app address (or any other
+// Vercel-assigned alias) loads a page whose browser origin Clerk's backend
+// correctly refuses to attribute, breaking sign-in with no useful error.
+// Redirect any such request to the canonical domain before Clerk gets
+// involved. Only applies to the actual production deployment, so preview
+// deployments (which legitimately live on *.vercel.app) are unaffected.
+const CANONICAL_PRODUCTION_HOST = "gridironfranchise.app";
+
 export default clerkMiddleware(async (auth, req) => {
+  if (process.env.VERCEL_ENV === "production" && req.nextUrl.hostname !== CANONICAL_PRODUCTION_HOST) {
+    const canonicalUrl = new URL(req.nextUrl.pathname + req.nextUrl.search, `https://${CANONICAL_PRODUCTION_HOST}`);
+    return NextResponse.redirect(canonicalUrl, 308);
+  }
   if (!isPublicRoute(req)) {
     await auth.protect();
   }
