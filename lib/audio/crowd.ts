@@ -90,6 +90,45 @@ export function playCheer(intensity: number): void {
   }
 }
 
+/** A deep sub-bass "boom" layered under the loudest crowd reactions. */
+function playBoom(context: AudioContext, peakGain: number) {
+  const osc = context.createOscillator();
+  osc.type = "sine";
+  const now = context.currentTime;
+  osc.frequency.setValueAtTime(90, now);
+  osc.frequency.exponentialRampToValueAtTime(38, now + 0.5);
+
+  const gain = context.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(peakGain, now + 0.04);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+
+  osc.connect(gain).connect(context.destination);
+  osc.start(now);
+  osc.stop(now + 0.65);
+}
+
+/**
+ * The stadium eruption for the biggest moments — touchdowns, game-changing
+ * turnovers. Layers a sub-bass boom and an extended broadband roar on top of
+ * whatever playCheer/playBoo already played for the same snap, so scoring
+ * reads as a genuinely different scale of noise, not just a louder cheer.
+ */
+export function playRoar(intensity: number): void {
+  const context = getContext();
+  if (!context) return;
+  const clamped = Math.max(0, Math.min(1, intensity));
+  if (clamped < 0.75) return;
+  playBoom(context, 0.35 + clamped * 0.25);
+  playNoiseSwell(context, {
+    startFreq: 700,
+    endFreq: 3200,
+    filterType: "bandpass",
+    duration: 1.6 + clamped * 0.8,
+    peakGain: 0.22 + clamped * 0.18,
+  });
+}
+
 /** A crowd boo/groan — noise descending in pitch, scaled by intensity (0-1). */
 export function playBoo(intensity: number): void {
   const context = getContext();

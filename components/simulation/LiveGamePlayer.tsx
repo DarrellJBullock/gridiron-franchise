@@ -1,15 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Card } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { TeamLogo } from "@/components/football/TeamLogo";
+import type { Field3DProps } from "@/components/simulation/field3d/Field3D";
 import { homeCrowdReaction } from "@/lib/simulation/crowd-reaction";
-import { playCheer, playBoo, unlockCrowdAudio } from "@/lib/audio/crowd";
-import { getContrastColor } from "@/lib/branding";
+import { playCheer, playBoo, playRoar, unlockCrowdAudio } from "@/lib/audio/crowd";
 import type { PlayByPlayEntry } from "@/types/football";
+import type { PlayerMotion } from "@/components/simulation/field3d/Field3D";
+
+// Three.js touches document/WebGL at render time, which crashes during
+// Next.js's server render of this "use client" component's first pass —
+// load it client-only, after hydration.
+const Field3D = dynamic<Field3DProps>(
+  () => import("@/components/simulation/field3d/Field3D").then((mod) => mod.Field3D),
+  { ssr: false, loading: () => <div className="aspect-[10/4] w-full animate-pulse rounded-lg bg-surface" /> }
+);
 
 interface TeamVisual {
   abbreviation: string;
@@ -118,43 +128,8 @@ function motionKind(play: PlayByPlayEntry): MotionKind {
   }
 }
 
-// Builds an absolute-coordinate SVG path for the ball to travel along via
-// <animateMotion>, shaped per play type (arcing lob for passes/kicks, an
-// S-curve juke for runs, a jittery backward hop for sacks).
-function ballPath(kind: MotionKind, fromX: number, toX: number): string {
-  const dx = toX - fromX;
-  switch (kind) {
-    case "pass": {
-      const lift = Math.min(70, 20 + Math.abs(dx) * 0.18);
-      return `M${fromX},150 Q${(fromX + toX) / 2},${150 - lift} ${toX},150`;
-    }
-    case "kick": {
-      const lift = Math.min(110, 40 + Math.abs(dx) * 0.22);
-      return `M${fromX},150 Q${(fromX + toX) / 2},${150 - lift} ${toX},150`;
-    }
-    case "run":
-      return `M${fromX},150 C${fromX + dx * 0.3},${168} ${fromX + dx * 0.7},${132} ${toX},150`;
-    case "sack":
-      return `M${fromX},150 L${fromX + dx * 0.4},158 L${fromX + dx * 0.7},142 L${toX},150`;
-    default:
-      return `M${fromX},150 L${toX},150`;
-  }
-}
-
-// A dedicated arc for kick attempts (field goal / extra point), which fly
-// from the snap spot all the way to the goalpost rather than stopping at
-// the line of scrimmage — landing dead center (toY 150) on a make, or
-// offset to one side of the posts on a miss.
-function fieldGoalArcPath(fromX: number, toX: number, toY: number): string {
-  const dx = toX - fromX;
-  const lift = Math.min(130, 55 + Math.abs(dx) * 0.22);
-  return `M${fromX},150 Q${(fromX + toX) / 2},${150 - lift} ${toX},${toY}`;
-}
-
 const ENDZONE_WIDTH = 80;
 const FIELD_WIDTH = 840;
-const TILT_DEG = 48;
-const PERSPECTIVE_PX = 1700;
 const GOALPOST_INSET_PCT = 1.5;
 const KICK_ATTEMPT_TYPES = new Set<PlayByPlayEntry["playType"]>(["field_goal", "missed_field_goal", "extra_point"]);
 // Snap-formation dots are drawn for scrimmage-down plays only; special-teams
@@ -185,11 +160,6 @@ function absoluteFieldX(yardLine: number, offenseAbbr: string, homeAbbr: string)
 function goalpostX(offenseAbbr: string, homeAbbr: string): number {
   const insetX = (GOALPOST_INSET_PCT / 100) * 1000;
   return offenseAbbr === homeAbbr ? 1000 - insetX : insetX;
-}
-
-function yardMarkerLabel(distanceFromLeftGoal: number): string {
-  const fromNearestGoal = distanceFromLeftGoal <= 50 ? distanceFromLeftGoal : 100 - distanceFromLeftGoal;
-  return fromNearestGoal === 0 || fromNearestGoal === 100 ? "" : String(fromNearestGoal);
 }
 
 // Rough pre-snap alignment, expressed as offsets from the ball along the
@@ -383,8 +353,12 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
     if (!crowdEnabled) return;
     const reaction = homeCrowdReaction(plays[index], home.abbreviation);
     if (!reaction) return;
-    if (reaction.type === "cheer") playCheer(reaction.intensity);
-    else playBoo(reaction.intensity);
+    if (reaction.type === "cheer") {
+      playCheer(reaction.intensity);
+      playRoar(reaction.intensity);
+    } else {
+      playBoo(reaction.intensity);
+    }
   }, [index, crowdEnabled, plays, home.abbreviation]);
 
   const { homeScore, awayScore } = useMemo(() => {
@@ -425,8 +399,6 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   const prevBallX = prevPlay ? absoluteFieldX(prevPlay.yardLine, prevPlay.offenseAbbr, home.abbreviation) : ballX;
   const kind = index >= 0 ? motionKind(current) : "straight";
   const motionDurationMs = Math.max(280, Math.round(SPEEDS[speed] * 0.7));
-  const loftClass = kind === "kick" ? "ball-loft-big" : kind === "pass" ? "ball-loft" : kind === "sack" ? "ball-shake" : "";
-  const shadowClass = kind === "kick" ? "shadow-loft-big" : kind === "pass" ? "shadow-loft" : "";
 
   // Field goals/extra points fly to the actual goalpost instead of just the
   // line of scrimmage — dead center through the posts on a make, offset to
@@ -439,11 +411,7 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
       ? 150
       : 150 + (current.sequence % 2 === 0 ? -42 : 42)
     : 150;
-  const ballFlightPath = isKickAttempt ? fieldGoalArcPath(ballX, kickTargetX, kickTargetY) : ballPath(kind, prevBallX, ballX);
-  const shadowFlightPath = isKickAttempt
-    ? `M${ballX},158 L${kickTargetX},${kickTargetY + 8}`
-    : `M${prevBallX},158 L${ballX},158`;
-  const kickFlashSide: "left" | "right" | null = isKickAttempt && scoredThisPlay ? (offenseIsHome ? "right" : "left") : null;
+  const kickMissed = isKickAttempt && !scoredThisPlay;
 
   // Snap formation: offense always attacks toward +x when home, -x when away.
   const forwardSign: 1 | -1 = offenseIsHome ? 1 : -1;
@@ -455,6 +423,39 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
     ? buildFormation(DEFENSE_FORMATION, DEFENSE_ROLES, prevBallX, ballX, forwardSign, kind, `def-${index}`)
     : [];
   const ballCarrierRuns = kind === "run" && current.playType !== "sack";
+
+  // For a run/sack, whichever defender ends up closest to where the play
+  // dies is the one who gets the tackle animation.
+  const tacklerKey =
+    (kind === "run" || kind === "sack") && defenseDots.length > 0
+      ? defenseDots.reduce((closest, d) => {
+          const dist = Math.hypot(d.endX - ballX, d.endY - 150);
+          const closestDist = Math.hypot(closest.endX - ballX, closest.endY - 150);
+          return dist < closestDist ? d : closest;
+        }).key
+      : null;
+
+  const players3D: PlayerMotion[] = [
+    ...offenseDots.map((d) => ({
+      key: d.key,
+      startX: d.startX,
+      startY: d.startY,
+      endX: d.endX,
+      endY: d.endY,
+      color: offenseTeam.primaryColor,
+      ring: offenseTeam.secondaryColor,
+    })),
+    ...defenseDots.map((d) => ({
+      key: d.key,
+      startX: d.startX,
+      startY: d.startY,
+      endX: d.endX,
+      endY: d.endY,
+      color: defenseTeam.primaryColor,
+      ring: defenseTeam.secondaryColor,
+      isTackler: d.key === tacklerKey,
+    })),
+  ];
 
   const banner = index >= 0 ? bannerFor(current, offenseTeam.primaryColor, defenseTeam.primaryColor) : null;
 
@@ -487,193 +488,24 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
           <span className="relative text-[10px] font-semibold uppercase tracking-widest text-white/40">Gridiron Franchise Network</span>
         </div>
 
-        <div className="relative" style={{ perspective: `${PERSPECTIVE_PX}px` }}>
-          <div
-            className="relative mx-auto [transform-style:preserve-3d]"
-            style={{ transform: `rotateX(${TILT_DEG}deg)`, transformOrigin: "bottom center" }}
-          >
-            <div className="overflow-hidden border border-border-line shadow-[0_35px_60px_-15px_rgba(0,0,0,0.75)]">
-              <svg viewBox="0 0 1000 300" className="w-full" role="img" aria-label="Field position">
-                <defs>
-                  <linearGradient id="turf" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0f3d21" />
-                    <stop offset="55%" stopColor="#166534" />
-                    <stop offset="100%" stopColor="#1d7a3d" />
-                  </linearGradient>
-                  <radialGradient id="floodlight" cx="50%" cy="0%" r="90%">
-                    <stop offset="0%" stopColor="#ffffff" stopOpacity="0.14" />
-                    <stop offset="45%" stopColor="#ffffff" stopOpacity="0.03" />
-                    <stop offset="100%" stopColor="#000000" stopOpacity="0.25" />
-                  </radialGradient>
-                </defs>
-                <rect x="0" y="0" width="1000" height="300" fill="url(#turf)" />
-
-                {/* Mow-stripe bands, alternating every 10 yards for a broadcast turf look */}
-                {Array.from({ length: 10 }, (_, i) => i).map((i) => (
-                  <rect
-                    key={`stripe-${i}`}
-                    x={ENDZONE_WIDTH + i * (FIELD_WIDTH / 10)}
-                    y="0"
-                    width={FIELD_WIDTH / 10}
-                    height="300"
-                    fill="#ffffff"
-                    fillOpacity={i % 2 === 0 ? 0.035 : 0}
-                  />
-                ))}
-
-                <rect x="0" y="0" width={ENDZONE_WIDTH} height="300" fill={home.secondaryColor} fillOpacity="0.9" />
-                <rect x={1000 - ENDZONE_WIDTH} y="0" width={ENDZONE_WIDTH} height="300" fill={away.secondaryColor} fillOpacity="0.9" />
-                <text
-                  x={ENDZONE_WIDTH / 2}
-                  y="150"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize="20"
-                  fontWeight={900}
-                  letterSpacing="2"
-                  fill={getContrastColor(home.secondaryColor)}
-                  fillOpacity="0.35"
-                  transform={`rotate(-90 ${ENDZONE_WIDTH / 2} 150)`}
-                >
-                  {home.abbreviation}
-                </text>
-                <text
-                  x={1000 - ENDZONE_WIDTH / 2}
-                  y="150"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize="20"
-                  fontWeight={900}
-                  letterSpacing="2"
-                  fill={getContrastColor(away.secondaryColor)}
-                  fillOpacity="0.35"
-                  transform={`rotate(90 ${1000 - ENDZONE_WIDTH / 2} 150)`}
-                >
-                  {away.abbreviation}
-                </text>
-
-                <g transform={`translate(8, ${(300 - 64) / 2})`}>
-                  <TeamLogo seed={home.abbreviation} primaryColor={home.primaryColor} secondaryColor={home.secondaryColor} abbreviation={home.abbreviation} size={64} />
-                </g>
-                <g transform={`translate(${1000 - ENDZONE_WIDTH + 8}, ${(300 - 64) / 2})`}>
-                  <TeamLogo seed={away.abbreviation} primaryColor={away.primaryColor} secondaryColor={away.secondaryColor} abbreviation={away.abbreviation} size={64} />
-                </g>
-
-                {Array.from({ length: 9 }, (_, i) => (i + 1) * 10).map((yard) => {
-                  const x = ENDZONE_WIDTH + (yard / 100) * FIELD_WIDTH;
-                  const label = yardMarkerLabel(yard);
-                  return (
-                    <g key={yard}>
-                      <line x1={x} y1={0} x2={x} y2={300} stroke="#ffffff" strokeOpacity="0.35" strokeWidth="1.5" />
-                      {label && (
-                        <>
-                          <text x={x} y="40" textAnchor="middle" fontSize="18" fill="#ffffff" fillOpacity="0.6">
-                            {label}
-                          </text>
-                          <text x={x} y="272" textAnchor="middle" fontSize="18" fill="#ffffff" fillOpacity="0.6">
-                            {label}
-                          </text>
-                        </>
-                      )}
-                    </g>
-                  );
-                })}
-
-                {/* Hash marks every 5 yards, NFL-style, offset off the yard lines */}
-                {Array.from({ length: 19 }, (_, i) => (i + 1) * 5).map((yard) => {
-                  if (yard % 10 === 0) return null;
-                  const x = ENDZONE_WIDTH + (yard / 100) * FIELD_WIDTH;
-                  return (
-                    <g key={`hash-${yard}`} stroke="#ffffff" strokeOpacity="0.3" strokeWidth="2">
-                      <line x1={x} y1={96} x2={x} y2={108} />
-                      <line x1={x} y1={192} x2={x} y2={204} />
-                    </g>
-                  );
-                })}
-
-                {/* Line of scrimmage */}
-                {index >= 0 && (
-                  <line x1={ballX} x2={ballX} y1={0} y2={300} stroke="#60a5fa" strokeWidth="2" strokeOpacity="0.75" strokeDasharray="5 5" />
-                )}
-                {/* First-down marker */}
-                {firstDownX !== null && (
-                  <line x1={firstDownX} x2={firstDownX} y1={0} y2={300} stroke="#facc15" strokeWidth="2.5" strokeDasharray="7 4" />
-                )}
-
-                {/* Formation: 11-on-11 dots set at the line, then run routes/blocks/pursuit
-                    over the play's duration so the field shows a developing play, not a
-                    frozen snap photo. */}
-                {offenseDots.map((d) => (
-                  <PlayerDot
-                    key={d.key}
-                    startX={d.startX}
-                    startY={d.startY}
-                    endX={d.endX}
-                    endY={d.endY}
-                    durationMs={motionDurationMs}
-                    color={offenseTeam.primaryColor}
-                    ring={offenseTeam.secondaryColor}
-                  />
-                ))}
-                {defenseDots.map((d) => (
-                  <PlayerDot
-                    key={d.key}
-                    startX={d.startX}
-                    startY={d.startY}
-                    endX={d.endX}
-                    endY={d.endY}
-                    durationMs={motionDurationMs}
-                    color={defenseTeam.primaryColor}
-                    ring={defenseTeam.secondaryColor}
-                  />
-                ))}
-
-                {/* Penalty flag / scoring flash overlays — keyed by index so the CSS animation re-triggers every play */}
-                {index >= 0 && current.playType === "penalty" && (
-                  <rect key={`penalty-${index}`} x="0" y="0" width="1000" height="300" fill="#facc15" fillOpacity="0.22" className="penalty-flash" pointerEvents="none" />
-                )}
-                {scoredThisPlay && (
-                  <rect key={`score-${index}`} x="0" y="0" width="1000" height="300" fill="#f5a623" fillOpacity="0.28" className="score-flash" pointerEvents="none" />
-                )}
-
-                {/* Ground shadow — shrinks/fades on lofted plays to sell height off the turf */}
-                {index >= 0 && (
-                  <g key={`shadow-${index}`} className={shadowClass} style={{ animationDuration: `${motionDurationMs}ms` }}>
-                    <ellipse rx="15" ry="5" fill="#000000" fillOpacity="0.4">
-                      <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={shadowFlightPath} />
-                    </ellipse>
-                  </g>
-                )}
-
-                {/* Ball carrier — a jersey-colored runner riding the same path as the ball on runs/returns */}
-                {index >= 0 && ballCarrierRuns && (
-                  <g key={`carrier-${index}`}>
-                    <circle r="7" fill={offenseTeam.primaryColor} stroke={offenseTeam.secondaryColor} strokeWidth="2">
-                      <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={ballFlightPath} />
-                    </circle>
-                  </g>
-                )}
-
-                {index >= 0 && (
-                  <g key={`ball-${index}`} className={scoredThisPlay ? "score-pop" : ""}>
-                    <g className={loftClass} style={{ animationDuration: `${motionDurationMs}ms` }}>
-                      <ellipse rx="14" ry="9" fill="#8B4513" stroke="#3a1f0a" strokeWidth="2" />
-                      <line x1="-7" y1="0" x2="7" y2="0" stroke="#fff" strokeWidth="1.5" />
-                      <line x1="-3" y1="-3" x2="-3" y2="3" stroke="#fff" strokeWidth="1" />
-                      <line x1="0" y1="-3" x2="0" y2="3" stroke="#fff" strokeWidth="1" />
-                      <line x1="3" y1="-3" x2="3" y2="3" stroke="#fff" strokeWidth="1" />
-                      <animateMotion dur={`${motionDurationMs}ms`} fill="freeze" path={ballFlightPath} />
-                    </g>
-                  </g>
-                )}
-
-                <rect x="0" y="0" width="1000" height="300" fill="url(#floodlight)" pointerEvents="none" />
-              </svg>
-            </div>
-
-            <Goalpost xPct={GOALPOST_INSET_PCT} tiltDeg={TILT_DEG} flash={kickFlashSide === "left"} flashKey={index} />
-            <Goalpost xPct={100 - GOALPOST_INSET_PCT} tiltDeg={TILT_DEG} flash={kickFlashSide === "right"} flashKey={index} />
-          </div>
+        <div className="relative">
+          <Field3D
+            home={home}
+            away={away}
+            playIndex={index}
+            kind={kind}
+            isKickAttempt={isKickAttempt}
+            scoredThisPlay={scoredThisPlay}
+            kickMissed={kickMissed}
+            motionDurationMs={motionDurationMs}
+            ballFromX={prevBallX}
+            ballToX={isKickAttempt ? kickTargetX : ballX}
+            ballToY={isKickAttempt ? kickTargetY : 150}
+            lineOfScrimmageX={index >= 0 ? ballX : null}
+            firstDownX={firstDownX}
+            players={players3D}
+            ballCarrierRides={ballCarrierRuns}
+          />
 
           <AnimatePresence>
             {banner && (
@@ -779,77 +611,6 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
         Play {Math.max(index + 1, 0)} of {plays.length}
       </p>
     </Card>
-  );
-}
-
-// A single player marker: a jersey-colored dot with a thin ring in the
-// team's secondary color, matching the flat SVG plane the ball/turf sit on
-// so it inherits the same 3D field tilt for free. Rides a straight
-// <animateMotion> path from its pre-snap spot to where the play leaves it
-// (a route run, a block, a pursuit angle), timed with the ball.
-function PlayerDot({
-  startX,
-  startY,
-  endX,
-  endY,
-  durationMs,
-  color,
-  ring,
-}: {
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-  durationMs: number;
-  color: string;
-  ring: string;
-}) {
-  return (
-    <circle cx={startX} cy={startY} r="6" fill={color} stroke={ring} strokeWidth="1.5" fillOpacity="0.92">
-      <animateMotion dur={`${durationMs}ms`} fill="freeze" path={`M${startX},${startY} L${endX},${endY}`} />
-    </circle>
-  );
-}
-
-// A flat "billboard" anchored to the tilted field's bottom edge, then
-// counter-rotated by the field's own tilt around that same anchor. The net
-// effect is a goalpost that appears to stand straight up out of the turf
-// instead of lying flat in the tilted plane.
-function Goalpost({
-  xPct,
-  tiltDeg,
-  flash = false,
-  flashKey,
-}: {
-  xPct: number;
-  tiltDeg: number;
-  flash?: boolean;
-  flashKey?: number;
-}) {
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute z-10 h-16 w-14 md:h-24 md:w-20"
-      style={{
-        left: `${xPct}%`,
-        top: "50%",
-        transform: `translate(-50%, -100%) rotateX(${-tiltDeg}deg)`,
-        transformOrigin: "bottom center",
-      }}
-    >
-      <div className="relative h-full w-full drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]">
-        {flash && (
-          <div
-            key={flashKey}
-            className="goalpost-flash absolute -inset-4 rounded-full bg-yellow-300"
-          />
-        )}
-        <div className="absolute bottom-0 left-1/2 h-[62%] w-[3px] -translate-x-1/2 bg-gradient-to-t from-yellow-600 via-yellow-400 to-yellow-300" />
-        <div className="absolute left-0 right-0 top-[38%] h-[3px] bg-gradient-to-r from-yellow-500 via-yellow-300 to-yellow-500" />
-        <div className="absolute left-0 top-0 h-[40%] w-[3px] origin-bottom -rotate-[8deg] bg-yellow-400" />
-        <div className="absolute right-0 top-0 h-[40%] w-[3px] origin-bottom rotate-[8deg] bg-yellow-400" />
-      </div>
-    </div>
   );
 }
 

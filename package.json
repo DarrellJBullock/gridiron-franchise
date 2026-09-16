@@ -17,6 +17,8 @@
   "dependencies": {
     "@clerk/nextjs": "^7.6.4",
     "@prisma/client": "6.19.3",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
     "@sentry/nextjs": "^10.74.0",
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",
@@ -26,6 +28,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.10.1",
+    "three": "^0.180.0",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
@@ -34,6 +37,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.186.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
