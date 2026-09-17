@@ -132,6 +132,45 @@ const ENDZONE_WIDTH = 80;
 const FIELD_WIDTH = 840;
 const GOALPOST_INSET_PCT = 1.5;
 const KICK_ATTEMPT_TYPES = new Set<PlayByPlayEntry["playType"]>(["field_goal", "missed_field_goal", "extra_point"]);
+
+// Real football timing: a deep bomb hangs in the air and takes real time to
+// develop; a quick slant, a stuffed run, or a chip-shot kick resolve fast.
+// The animation duration now scales with how far the play actually
+// traveled instead of every play — a 5-yard out and a 60-yard bomb — taking
+// the same fixed length regardless of what happened. The playback-speed
+// toggle (1x/2x/4x) still scales all of this up or down proportionally.
+function baseMotionMs(kind: MotionKind, yards: number): number {
+  const distance = Math.min(60, Math.abs(yards));
+  switch (kind) {
+    case "pass":
+      return 500 + distance * 24; // a slant is quick; a bomb hangs
+    case "kick":
+      return 900 + distance * 9;
+    case "run":
+      return 550 + distance * 16;
+    case "sack":
+      return 650;
+    default:
+      return 700;
+  }
+}
+
+// field_goal/missed_field_goal/extra_point store 0 in the play's `yards`
+// field — the simulation engine only puts the real attempt distance in the
+// description text — so the kick distance is derived here the same way the
+// engine itself computes it (lib/simulation/game-engine.ts), from how far
+// the offense's own yard line is from the goal.
+function kickAttemptDistance(play: PlayByPlayEntry): number {
+  return 100 - play.yardLine + 17;
+}
+
+function motionDurationForPlay(play: PlayByPlayEntry, speed: SpeedKey): number {
+  const kind = motionKind(play);
+  const timingYards = KICK_ATTEMPT_TYPES.has(play.playType) ? kickAttemptDistance(play) : play.yards;
+  const speedMultiplier = SPEEDS["1x"] / SPEEDS[speed];
+  return Math.max(240, Math.round(baseMotionMs(kind, timingYards) / speedMultiplier));
+}
+
 // Snap-formation dots are drawn for scrimmage-down plays only; special-teams
 // plays (punts, kicks, returns) get a clear field so the ball flight and
 // goalpost read without 22 overlapping dots.
@@ -619,13 +658,19 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
 
   useEffect(() => {
     if (!playing || finished || plays.length === 0) return;
+    // The current play stays on screen at least as long as its own
+    // animation needs (a deep bomb or a long run take longer to develop
+    // than a stuffed run) — a fixed interval would cut a slow play's
+    // animation off before it finishes and jump straight to the next snap.
+    const timingPlay = plays[Math.max(index, 0)];
+    const delay = motionDurationForPlay(timingPlay, speed) + 320;
     timeoutRef.current = setTimeout(() => {
       setIndex((i) => Math.min(i + 1, plays.length - 1));
-    }, SPEEDS[speed]);
+    }, delay);
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [playing, finished, plays.length, speed, index]);
+  }, [playing, finished, plays, speed, index]);
 
   // Home-crowd cheer/boo reaction to whichever play we just landed on.
   // Marking the index as "handled" happens regardless of the mute state so
@@ -681,7 +726,7 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   const prevPlay = index > 0 ? plays[index - 1] : null;
   const prevBallX = prevPlay ? absoluteFieldX(prevPlay.yardLine, prevPlay.offenseAbbr, home.abbreviation) : ballX;
   const kind = index >= 0 ? motionKind(current) : "straight";
-  const motionDurationMs = Math.max(280, Math.round(SPEEDS[speed] * 0.7));
+  const motionDurationMs = motionDurationForPlay(current, speed);
 
   // Field goals/extra points fly to the actual goalpost instead of just the
   // line of scrimmage — dead center through the posts on a make, offset to
@@ -735,6 +780,24 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
       ? defenseDots.reduce((closest, d) => {
           const dist = Math.hypot(d.endX - ballX, d.endY - 150);
           const closestDist = Math.hypot(closest.endX - ballX, closest.endY - 150);
+          return dist < closestDist ? d : closest;
+        }).key
+      : null;
+
+  // A run gaining notably more than a stuffed-at-the-line average (12+
+  // yards) reads as a broken tackle: whichever other defender is nearest to
+  // roughly the midpoint of the carry lunges for it and comes up empty —
+  // his own dot gets an early, truncated finish (via earlyFallProgress) so
+  // he arrives and falls well before the real tackler catches the carrier
+  // at the actual end spot.
+  const isBrokenTackleRun = kind === "run" && current.playType !== "sack" && Math.abs(current.yards) >= 12;
+  const brokenTackleMidX = prevBallX + (ballX - prevBallX) * 0.45;
+  const brokenTackleCandidates = defenseDots.filter((d) => d.key !== tacklerKey);
+  const brokenTackleKey =
+    isBrokenTackleRun && brokenTackleCandidates.length > 0
+      ? brokenTackleCandidates.reduce((closest, d) => {
+          const dist = Math.hypot(d.endX - brokenTackleMidX, d.endY - 150);
+          const closestDist = Math.hypot(closest.endX - brokenTackleMidX, closest.endY - 150);
           return dist < closestDist ? d : closest;
         }).key
       : null;
@@ -812,17 +875,21 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
         isHandingOff: isRbRunPlay && d.role === "QB",
       };
     }),
-    ...defenseDots.map((d) => ({
-      key: d.key,
-      startX: d.startX,
-      startY: d.startY,
-      endX: d.endX,
-      endY: d.endY,
-      color: defenseTeam.primaryColor,
-      ring: defenseTeam.secondaryColor,
-      isTackler: d.key === tacklerKey,
-      isReceiver: d.key === interceptor?.key || d.key === breakupDefender?.key,
-    })),
+    ...defenseDots.map((d) => {
+      const isBrokenTackleDefender = d.key === brokenTackleKey;
+      return {
+        key: d.key,
+        startX: d.startX,
+        startY: d.startY,
+        endX: isBrokenTackleDefender ? brokenTackleMidX : d.endX,
+        endY: isBrokenTackleDefender ? 150 : d.endY,
+        color: defenseTeam.primaryColor,
+        ring: defenseTeam.secondaryColor,
+        isTackler: d.key === tacklerKey,
+        isReceiver: d.key === interceptor?.key || d.key === breakupDefender?.key,
+        earlyFallProgress: isBrokenTackleDefender ? 0.45 : undefined,
+      };
+    }),
   ];
 
   const banner = index >= 0 ? bannerFor(current, offenseTeam.primaryColor, defenseTeam.primaryColor) : null;
