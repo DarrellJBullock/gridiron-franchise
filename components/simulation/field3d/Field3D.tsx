@@ -72,6 +72,11 @@ export interface PlayerMotion {
   // cuts to (endX, endY) — an L-shaped route instead of a straight lerp.
   viaX?: number;
   viaY?: number;
+  // A missed tackle: this player's own motion finishes (and falls) at this
+  // fraction of the play's overall duration instead of the full length —
+  // he lunges for the carrier and comes up empty well before the real
+  // tackle happens at the actual end spot.
+  earlyFallProgress?: number;
 }
 
 export type MotionKind = "pass" | "run" | "sack" | "kick" | "straight";
@@ -320,10 +325,18 @@ function PlayerMesh({
     return a.lerp(b, t);
   };
 
+  // A missed-tackle defender's own motion runs on a truncated clock — he
+  // lunges, arrives, and falls at his earlyFallProgress fraction of the
+  // play's real duration instead of running the full length like everyone
+  // else still in pursuit or blocking.
+  const effectiveDurationMs =
+    motion.earlyFallProgress !== undefined ? durationMs * motion.earlyFallProgress : durationMs;
+  const effectiveFallOnImpact = fallOnImpact || motion.earlyFallProgress !== undefined;
+
   useFrame((state, delta) => {
     if (startedAt.current === 0) startedAt.current = state.clock.elapsedTime;
     const elapsedMs = (state.clock.elapsedTime - startedAt.current) * 1000;
-    const progress = Math.max(0, Math.min(1, elapsedMs / durationMs));
+    const progress = Math.max(0, Math.min(1, elapsedMs / effectiveDurationMs));
     const eased = 1 - Math.pow(1 - progress, 2);
     const g = groupRef.current;
     if (!g) return;
@@ -359,7 +372,7 @@ function PlayerMesh({
       if (moving) {
         const nextPos = posAt(Math.min(1, eased + 0.05));
         body.rotation.y = Math.atan2(nextPos.x - pos.x, nextPos.z - pos.z) + PLAYER_YAW_OFFSET;
-      } else if (fallOnImpact && !fallen.current) {
+      } else if (effectiveFallOnImpact && !fallen.current) {
         fallen.current = true;
       }
       if (fallen.current) {
