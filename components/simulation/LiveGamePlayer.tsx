@@ -888,6 +888,9 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
         isBallHandler: (kind === "sack" && d.role === "QB") || isBallCarrierRb,
         isCarrier: isBallCarrierRb,
         isHandingOff: isRbRunPlay && d.role === "QB",
+        // The broken-tackle run's ball carrier is the one juking — reuses
+        // the outcome already resolved above rather than new state.
+        playsJuke: isBallCarrierRb && isBrokenTackleRun,
       };
     }),
     ...defenseDots.map((d) => {

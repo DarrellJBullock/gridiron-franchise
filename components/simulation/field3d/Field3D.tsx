@@ -32,28 +32,49 @@ useTexture.preload(GRASS_DIFFUSE_URL);
 useTexture.preload(GRASS_NORMAL_URL);
 
 // A real rigged, skinned, animated humanoid model stands in for the old
-// hand-built capsule rig — "CesiumMan", a Khronos glTF sample asset (CC-BY
-// 4.0, © Cesium; see README for the attribution this license requires).
-// It's generic and ships with exactly one walk-cycle animation, which is
-// the tradeoff of a free asset over a licensed/custom football rig: there's
-// no throw/kick/catch/handoff-specific mocap, so those moments just play
-// the same walk cycle rather than a dedicated pose.
+// hand-built capsule rig — "Mannequiny" by GDQuest (CC-BY 4.0; see README
+// for the attribution this license requires). Unlike the single-clip model
+// used before this, it ships a real set of named locomotion/action clips
+// (run, walk, idle, dash, air_jump, fight_punch, fight_kick, ...), which is
+// what makes real crossfade blending between run/cut/catch/tackle possible
+// instead of one clip played at every moment.
 const PLAYER_MODEL_URL = "/models/player.glb";
 useGLTF.preload(PLAYER_MODEL_URL);
 
-// The model's authored scale and default facing direction don't match our
-// world units or forward-facing convention. PLAYER_MODEL_LOCAL_HEIGHT is
-// measured directly from the model's glTF position accessor (its own local
-// bind-pose bounding box, read straight from the file) rather than computed
-// at runtime via THREE.Box3 — Box3.setFromObject doesn't reliably measure a
-// SkinnedMesh's true extent (it ignores skin/bone deformation), which
-// previously made every player render several times too large. PLAYER_YAW_OFFSET
+// The model's authored scale doesn't exactly match our world units.
+// PLAYER_MODEL_LOCAL_HEIGHT is measured directly from the model's glTF
+// position accessor (its own local bind-pose bounding box, read straight
+// from the file) rather than computed at runtime via THREE.Box3 —
+// Box3.setFromObject doesn't reliably measure a SkinnedMesh's true extent
+// (it ignores skin/bone deformation), which previously made every player
+// render several times too large with an earlier model. PLAYER_YAW_OFFSET
 // is a manual correction if the model ends up facing the wrong way — nudge
-// it by increments of Math.PI / 2 if so.
+// it by increments of Math.PI / 2 if so (unverified for this model: the
+// rendering environment this was built in couldn't visually confirm it).
 const PLAYER_TARGET_HEIGHT = 1.8;
-const PLAYER_MODEL_LOCAL_HEIGHT = 1.5065;
+const PLAYER_MODEL_LOCAL_HEIGHT = 1.798;
 const PLAYER_SCALE = PLAYER_TARGET_HEIGHT / PLAYER_MODEL_LOCAL_HEIGHT;
 const PLAYER_YAW_OFFSET = 0;
+
+// Named clips this model ships with that the animation state machine below
+// actually uses — run (default locomotion), dash (cut/juke), air_jump
+// (catch — reaching up for the ball), fight_punch (tackle impact), and idle
+// (at rest). The model has other clips (walk, fight_kick, air_land, ...)
+// not used here; this project doesn't have football-specific mocap
+// (throw/snap/handoff still use hand-built poses elsewhere in this file).
+const CLIP_RUN = "run";
+const CLIP_IDLE = "idle";
+const CLIP_JUKE = "dash";
+const CLIP_CATCH = "air_jump";
+const CLIP_TACKLE = "fight_punch";
+// The last stretch of a play's motion where a catch/tackle flourish plays,
+// matching CameraRig's own "quick cut" window so the animation flourish and
+// the camera's tighter framing land at the same moment.
+const CLIMAX_PROGRESS = 0.82;
+// The juke window is a broken-tackle run's midpoint, not its end — it's the
+// move that breaks the tackle, not the finish.
+const JUKE_PROGRESS_START = 0.32;
+const JUKE_PROGRESS_END = 0.58;
 
 interface TeamVisual {
   abbreviation: string;
@@ -95,6 +116,9 @@ export interface PlayerMotion {
   // he lunges for the carrier and comes up empty well before the real
   // tackle happens at the actual end spot.
   earlyFallProgress?: number;
+  // Plays the "dash" cut/juke clip partway through the play instead of the
+  // default run cycle — set on a broken-tackle run's ball carrier.
+  playsJuke?: boolean;
 }
 
 export type MotionKind = "pass" | "run" | "sack" | "kick" | "straight";
@@ -277,10 +301,10 @@ function Goalpost({ x }: { x: number }) {
 }
 
 // A real skinned, rigged player model (see PLAYER_MODEL_URL above), tinted
-// per team and driven by its single walk-cycle clip while moving. Position
-// is still hand-animated every frame from a per-mesh progress ref (not
-// React state) — useFrame keeps 22 moving players cheap — only the *body*
-// rendering changed from hand-built primitives to a real animated mesh.
+// per team and crossfaded between named clips (run/dash/air_jump/
+// fight_punch/idle) as the play develops, instead of one clip played
+// everywhere. Position is still hand-animated every frame from a per-mesh
+// progress ref (not React state) — useFrame keeps 22 moving players cheap.
 function PlayerMesh({
   motion,
   durationMs,
@@ -303,12 +327,13 @@ function PlayerMesh({
   // handle bone bindings) gives every instance its own rig while still
   // sharing the underlying geometry/animation data.
   const clonedScene = useMemo(() => SkeletonUtils.clone(scene) as THREE.Group, [scene]);
-  const walkClip = animations[0] ?? null;
-  // The mixer/action live in a ref (not a variable captured from the useGLTF
+  // The mixer/actions live in refs (not variables captured from the useGLTF
   // hook) purely so useFrame below is free to mutate playback state every
   // frame — the lint rule that caught the earlier useThree()/camera mutation
   // applies the same way to hook-returned animation objects.
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const actionsRef = useRef<Partial<Record<string, THREE.AnimationAction>>>({});
+  const activeClipRef = useRef<string | null>(null);
 
   useEffect(() => {
     clonedScene.traverse((child) => {
@@ -327,12 +352,39 @@ function PlayerMesh({
   useEffect(() => {
     const mixer = new THREE.AnimationMixer(clonedScene);
     mixerRef.current = mixer;
-    if (walkClip) mixer.clipAction(walkClip).reset().play();
+    const actions: Partial<Record<string, THREE.AnimationAction>> = {};
+    for (const name of [CLIP_RUN, CLIP_IDLE, CLIP_JUKE, CLIP_CATCH, CLIP_TACKLE]) {
+      const clip = THREE.AnimationClip.findByName(animations, name);
+      if (clip) actions[name] = mixer.clipAction(clip);
+    }
+    actionsRef.current = actions;
+    // Nearly every player starts moving immediately (there's no modeled
+    // pre-snap hold), so start on the run cycle rather than idle.
+    const initialName = actions[CLIP_RUN] ? CLIP_RUN : Object.keys(actions)[0];
+    const initial = initialName ? actions[initialName] : undefined;
+    initial?.reset().play();
+    activeClipRef.current = initial ? initialName! : null;
     return () => {
       mixer.stopAllAction();
       mixerRef.current = null;
+      actionsRef.current = {};
+      activeClipRef.current = null;
     };
-  }, [clonedScene, walkClip]);
+  }, [clonedScene, animations]);
+
+  // Crossfades from whatever's currently playing into `name`, the standard
+  // three.js AnimationMixer recipe (fade the old action out, fade the new
+  // one in) instead of a hard pose snap. A no-op if `name` is already
+  // active or isn't one of the clips this model actually has.
+  function playClip(name: string, fadeSeconds = 0.25) {
+    if (activeClipRef.current === name) return;
+    const next = actionsRef.current[name];
+    if (!next) return;
+    const prev = activeClipRef.current ? actionsRef.current[activeClipRef.current] : undefined;
+    next.reset().setEffectiveWeight(1).fadeIn(fadeSeconds).play();
+    prev?.fadeOut(fadeSeconds);
+    activeClipRef.current = name;
+  }
 
   const start = useMemo(
     () => new THREE.Vector3(toWorldX(motion.startX), 0, toWorldZ(motion.startY)),
@@ -391,14 +443,32 @@ function PlayerMesh({
     const bob = moving ? Math.abs(Math.sin(state.clock.elapsedTime * 9)) * 0.12 : 0;
     g.position.y = bob;
 
-    const mixer = mixerRef.current;
-    if (mixer && walkClip) {
-      const action = mixer.existingAction(walkClip);
-      if (action) {
-        action.paused = !moving || fallen.current;
-        action.timeScale = motion.isCarrier ? 1.35 : 1.1;
+    // Which clip should be playing right now, purely a function of this
+    // player's own resolved motion data (isReceiver, playsJuke,
+    // effectiveFallOnImpact) and how far along the play is — not new state.
+    if (!fallen.current) {
+      const inClimax = progress > CLIMAX_PROGRESS;
+      let desiredClip: string = CLIP_RUN;
+      if (!moving) {
+        desiredClip = effectiveFallOnImpact ? CLIP_TACKLE : CLIP_IDLE;
+      } else if (motion.isReceiver && inClimax) {
+        desiredClip = CLIP_CATCH;
+      } else if (effectiveFallOnImpact && inClimax) {
+        desiredClip = CLIP_TACKLE;
+      } else if (motion.playsJuke && progress > JUKE_PROGRESS_START && progress < JUKE_PROGRESS_END) {
+        desiredClip = CLIP_JUKE;
       }
-      mixer.update(delta);
+      playClip(desiredClip);
+
+      if (activeClipRef.current === CLIP_RUN || activeClipRef.current === CLIP_JUKE) {
+        // .setEffectiveTimeScale (a method call) rather than assigning
+        // `.timeScale` directly — same effect, but assigning a property on
+        // a value read back out of a ref populated inside an effect trips
+        // this codebase's react-hooks/immutability rule (see mixerRef/
+        // action.paused precedent elsewhere in this file).
+        mixerRef.current?.existingAction(activeClipRef.current)?.setEffectiveTimeScale(motion.isCarrier ? 1.35 : 1.1);
+      }
+      mixerRef.current?.update(delta);
     }
 
     const body = bodyRef.current;

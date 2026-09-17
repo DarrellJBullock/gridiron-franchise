@@ -299,8 +299,11 @@ and branding are invented for demonstration purposes only.
 
 ### Third-Party Assets
 
-The 3D live-game viewer's player model is **"CesiumMan"**, a Khronos Group glTF sample asset,
-© 2017 Cesium, licensed under [Creative Commons Attribution 4.0 International (CC-BY-4.0)](https://creativecommons.org/licenses/by/4.0/).
+The 3D live-game viewer's player model is **"Mannequiny"** by [GDQuest](https://www.gdquest.com/),
+Luciano Muñoz, and contributors ([source](https://github.com/gdquest-demos/godot-3d-mannequin)),
+licensed under [Creative Commons Attribution 4.0 International (CC-BY-4.0)](https://creativecommons.org/licenses/by/4.0/).
+It replaced an earlier single-animation model ("CesiumMan") specifically because it ships with a
+real set of locomotion/action clips (run, walk, idle, dash, jump, punch, kick) instead of only one.
 
 The stadium-sky HDRI (`public/hdri/stadium_sky_1k.hdr`) is **"Kloofendal 48d Partly Cloudy Puresky"**
 and the field's grass texture/normal map (`public/textures/grass/`) is **"Leafy Grass"**, both from
