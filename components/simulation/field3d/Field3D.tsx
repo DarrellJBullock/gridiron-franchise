@@ -215,6 +215,10 @@ function PlayerMesh({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
+  const leftArmRef = useRef<THREE.Group>(null);
+  const rightArmRef = useRef<THREE.Group>(null);
+  const leftLegRef = useRef<THREE.Group>(null);
+  const rightLegRef = useRef<THREE.Group>(null);
   const startedAt = useRef(0);
   const fallen = useRef(false);
 
@@ -264,17 +268,29 @@ function PlayerMesh({
       g.position.x += (-dz / len) * juke;
       g.position.z += (dx / len) * juke;
     }
-    const bob = moving ? Math.abs(Math.sin(state.clock.elapsedTime * 9)) * 0.22 : 0;
+    const bob = moving ? Math.abs(Math.sin(state.clock.elapsedTime * 9)) * 0.12 : 0;
     g.position.y = bob;
 
+    const strideSpeed = motion.isCarrier ? 11 : 9;
+    const stride = Math.sin(state.clock.elapsedTime * strideSpeed);
     const body = bodyRef.current;
     if (body) {
       if (moving) {
-        body.rotation.z = Math.sin(state.clock.elapsedTime * 9) * 0.12;
+        if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.6;
+        if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.6;
+        if (leftArmRef.current) leftArmRef.current.rotation.x = -stride * 0.5;
+        if (rightArmRef.current) rightArmRef.current.rotation.x = stride * 0.5;
+        body.rotation.z = stride * 0.05;
         const nextPos = posAt(Math.min(1, eased + 0.05));
         body.rotation.y = Math.atan2(nextPos.x - pos.x, nextPos.z - pos.z);
       } else if (fallOnImpact && !fallen.current) {
         fallen.current = true;
+      }
+      if (!moving && !fallen.current) {
+        // Settle the stride back to a neutral standing pose once the play ends.
+        for (const limb of [leftLegRef, rightLegRef, leftArmRef, rightArmRef]) {
+          if (limb.current) limb.current.rotation.x = THREE.MathUtils.lerp(limb.current.rotation.x, 0, 0.3);
+        }
       }
       if (fallen.current) {
         body.rotation.x = THREE.MathUtils.lerp(body.rotation.x, Math.PI / 2.1, 0.25);
@@ -286,14 +302,62 @@ function PlayerMesh({
   return (
     <group ref={groupRef} position={start} key={`${motion.key}-${playIndex}`}>
       <group ref={bodyRef}>
-        <mesh position={[0, 0.75, 0]} castShadow>
-          <capsuleGeometry args={[0.42, 0.9, 4, 8]} />
+        {/* hips/pants */}
+        <mesh position={[0, 0.5, 0]} castShadow>
+          <boxGeometry args={[0.46, 0.24, 0.28]} />
+          <meshStandardMaterial color="#1f2937" roughness={0.8} />
+        </mesh>
+        {/* torso/jersey */}
+        <mesh position={[0, 0.94, 0]} castShadow>
+          <capsuleGeometry args={[0.3, 0.42, 4, 8]} />
           <meshStandardMaterial color={motion.color} roughness={0.6} />
         </mesh>
+        {/* helmet */}
         <mesh position={[0, 1.55, 0]} castShadow>
-          <sphereGeometry args={[0.32, 12, 12]} />
-          <meshStandardMaterial color={motion.ring} roughness={0.3} metalness={0.1} />
+          <sphereGeometry args={[0.27, 14, 14]} />
+          <meshStandardMaterial color={motion.ring} roughness={0.25} metalness={0.15} />
         </mesh>
+        {/* facemask */}
+        <mesh position={[0, 1.49, 0.25]} castShadow>
+          <boxGeometry args={[0.16, 0.1, 0.06]} />
+          <meshStandardMaterial color="#1f2937" roughness={0.4} metalness={0.3} />
+        </mesh>
+
+        {/* arms, pivoted at the shoulder so they swing with the stride */}
+        <group ref={leftArmRef} position={[-0.4, 1.3, 0]}>
+          <mesh position={[0, -0.24, 0]} castShadow>
+            <capsuleGeometry args={[0.1, 0.36, 4, 8]} />
+            <meshStandardMaterial color={motion.color} roughness={0.6} />
+          </mesh>
+        </group>
+        <group ref={rightArmRef} position={[0.4, 1.3, 0]}>
+          <mesh position={[0, -0.24, 0]} castShadow>
+            <capsuleGeometry args={[0.1, 0.36, 4, 8]} />
+            <meshStandardMaterial color={motion.color} roughness={0.6} />
+          </mesh>
+        </group>
+
+        {/* legs, pivoted at the hip so they swing with the stride */}
+        <group ref={leftLegRef} position={[-0.16, 0.5, 0]}>
+          <mesh position={[0, -0.28, 0]} castShadow>
+            <capsuleGeometry args={[0.14, 0.42, 4, 8]} />
+            <meshStandardMaterial color="#1f2937" roughness={0.8} />
+          </mesh>
+          <mesh position={[0, -0.56, 0.06]} castShadow>
+            <boxGeometry args={[0.16, 0.1, 0.24]} />
+            <meshStandardMaterial color="#111827" roughness={0.6} />
+          </mesh>
+        </group>
+        <group ref={rightLegRef} position={[0.16, 0.5, 0]}>
+          <mesh position={[0, -0.28, 0]} castShadow>
+            <capsuleGeometry args={[0.14, 0.42, 4, 8]} />
+            <meshStandardMaterial color="#1f2937" roughness={0.8} />
+          </mesh>
+          <mesh position={[0, -0.56, 0.06]} castShadow>
+            <boxGeometry args={[0.16, 0.1, 0.24]} />
+            <meshStandardMaterial color="#111827" roughness={0.6} />
+          </mesh>
+        </group>
       </group>
     </group>
   );
