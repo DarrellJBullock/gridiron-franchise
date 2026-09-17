@@ -1,9 +1,29 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
+import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
 import { getContrastColor } from "@/lib/branding";
+
+// A real rigged, skinned, animated humanoid model stands in for the old
+// hand-built capsule rig — "CesiumMan", a Khronos glTF sample asset (CC-BY
+// 4.0, © Cesium; see README for the attribution this license requires).
+// It's generic and ships with exactly one walk-cycle animation, which is
+// the tradeoff of a free asset over a licensed/custom football rig: there's
+// no throw/kick/catch/handoff-specific mocap, so those moments just play
+// the same walk cycle rather than a dedicated pose.
+const PLAYER_MODEL_URL = "/models/player.glb";
+useGLTF.preload(PLAYER_MODEL_URL);
+
+// The model's authored scale and default facing direction don't match our
+// world units or forward-facing convention. PLAYER_TARGET_HEIGHT normalizes
+// height automatically (measured from the model's own bounding box);
+// PLAYER_YAW_OFFSET is a manual correction if the model ends up facing the
+// wrong way — nudge it by increments of Math.PI / 2 if so.
+const PLAYER_TARGET_HEIGHT = 1.8;
+const PLAYER_YAW_OFFSET = 0;
 
 // World space mirrors the field's real proportions (100 yards + two 10-yard
 // end zones) at a small, three.js-friendly scale — 1 world unit per yard.
@@ -212,10 +232,11 @@ function Goalpost({ x }: { x: number }) {
   );
 }
 
-// A stylized player: a jersey-colored capsule body with a helmet, animated
-// every frame from its pre-snap spot toward wherever the play leaves it. Runs
-// don't use React state for motion — a per-mesh progress ref driven by
-// useFrame keeps 22 moving players cheap.
+// A real skinned, rigged player model (see PLAYER_MODEL_URL above), tinted
+// per team and driven by its single walk-cycle clip while moving. Position
+// is still hand-animated every frame from a per-mesh progress ref (not
+// React state) — useFrame keeps 22 moving players cheap — only the *body*
+// rendering changed from hand-built primitives to a real animated mesh.
 function PlayerMesh({
   motion,
   durationMs,
@@ -229,12 +250,51 @@ function PlayerMesh({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
-  const leftArmRef = useRef<THREE.Group>(null);
-  const rightArmRef = useRef<THREE.Group>(null);
-  const leftLegRef = useRef<THREE.Group>(null);
-  const rightLegRef = useRef<THREE.Group>(null);
   const startedAt = useRef(0);
   const fallen = useRef(false);
+
+  const { scene, animations } = useGLTF(PLAYER_MODEL_URL);
+  // Each of the 22 players on screen needs its own independent skeleton and
+  // animation state — SkeletonUtils.clone (not Object3D.clone, which doesn't
+  // handle bone bindings) gives every instance its own rig while still
+  // sharing the underlying geometry/animation data.
+  const clonedScene = useMemo(() => SkeletonUtils.clone(scene) as THREE.Group, [scene]);
+  const walkClip = animations[0] ?? null;
+  // The mixer/action live in a ref (not a variable captured from the useGLTF
+  // hook) purely so useFrame below is free to mutate playback state every
+  // frame — the lint rule that caught the earlier useThree()/camera mutation
+  // applies the same way to hook-returned animation objects.
+  const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+
+  const [modelScale, modelYOffset] = useMemo(() => {
+    const box = new THREE.Box3().setFromObject(clonedScene);
+    const height = box.max.y - box.min.y || 1;
+    const scale = PLAYER_TARGET_HEIGHT / height;
+    return [scale, -box.min.y * scale];
+  }, [clonedScene]);
+
+  useEffect(() => {
+    clonedScene.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const source = Array.isArray(child.material) ? child.material[0] : child.material;
+      const tinted = source.clone();
+      if (tinted instanceof THREE.MeshStandardMaterial || tinted instanceof THREE.MeshPhysicalMaterial) {
+        tinted.color.set(motion.color);
+      }
+      child.material = tinted;
+      child.castShadow = true;
+    });
+  }, [clonedScene, motion.color]);
+
+  useEffect(() => {
+    const mixer = new THREE.AnimationMixer(clonedScene);
+    mixerRef.current = mixer;
+    if (walkClip) mixer.clipAction(walkClip).reset().play();
+    return () => {
+      mixer.stopAllAction();
+      mixerRef.current = null;
+    };
+  }, [clonedScene, walkClip]);
 
   const start = useMemo(
     () => new THREE.Vector3(toWorldX(motion.startX), 0, toWorldZ(motion.startY)),
@@ -261,7 +321,7 @@ function PlayerMesh({
     return a.lerp(b, t);
   };
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     if (startedAt.current === 0) startedAt.current = state.clock.elapsedTime;
     const elapsedMs = (state.clock.elapsedTime - startedAt.current) * 1000;
     const progress = Math.max(0, Math.min(1, elapsedMs / durationMs));
@@ -285,63 +345,23 @@ function PlayerMesh({
     const bob = moving ? Math.abs(Math.sin(state.clock.elapsedTime * 9)) * 0.12 : 0;
     g.position.y = bob;
 
-    const strideSpeed = motion.isCarrier ? 11 : 9;
-    const stride = Math.sin(state.clock.elapsedTime * strideSpeed);
+    const mixer = mixerRef.current;
+    if (mixer && walkClip) {
+      const action = mixer.existingAction(walkClip);
+      if (action) {
+        action.paused = !moving || fallen.current;
+        action.timeScale = motion.isCarrier ? 1.35 : 1.1;
+      }
+      mixer.update(delta);
+    }
+
     const body = bodyRef.current;
     if (body) {
       if (moving) {
-        if (motion.isKicker) {
-          // Plant leg holds steady; the kicking leg swings back-to-front as
-          // the ball leaves, with the arms countering for balance.
-          const kickT = Math.min(1, eased / 0.35);
-          const swing = THREE.MathUtils.lerp(-0.5, 1.3, 1 - Math.pow(1 - kickT, 3));
-          if (rightLegRef.current) rightLegRef.current.rotation.x = swing;
-          if (leftLegRef.current) leftLegRef.current.rotation.x = -0.15;
-          if (leftArmRef.current) leftArmRef.current.rotation.x = THREE.MathUtils.lerp(0, -0.4, kickT);
-          if (rightArmRef.current) rightArmRef.current.rotation.x = THREE.MathUtils.lerp(0, 0.3, kickT);
-        } else if (motion.isPasser) {
-          // Cock the arm back, then release forward early in the snap.
-          const throwT = Math.min(1, eased / 0.4);
-          const arm = THREE.MathUtils.lerp(-1.1, 0.9, 1 - Math.pow(1 - throwT, 3));
-          if (rightArmRef.current) rightArmRef.current.rotation.x = arm;
-          if (leftArmRef.current) leftArmRef.current.rotation.x = -0.2;
-          if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.25;
-          if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.25;
-        } else if (motion.isReceiver) {
-          // Reach both arms up to make the catch as the ball arrives late.
-          const catchT = Math.max(0, Math.min(1, (eased - 0.6) / 0.4));
-          const reach = THREE.MathUtils.lerp(0, -1.3, catchT);
-          if (leftArmRef.current) leftArmRef.current.rotation.x = reach;
-          if (rightArmRef.current) rightArmRef.current.rotation.x = reach;
-          if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.6;
-          if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.6;
-        } else if (motion.isHandingOff) {
-          // Turn and extend the ball forward for the exchange early in the
-          // snap, then stay put watching the play develop — a real handoff
-          // stands still afterward rather than continuing to run downfield.
-          const handoffT = Math.min(1, eased / 0.3);
-          const extend = THREE.MathUtils.lerp(0, -0.7, 1 - Math.pow(1 - handoffT, 3));
-          if (leftArmRef.current) leftArmRef.current.rotation.x = extend;
-          if (rightArmRef.current) rightArmRef.current.rotation.x = extend;
-          if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.15;
-          if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.15;
-        } else {
-          if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.6;
-          if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.6;
-          if (leftArmRef.current) leftArmRef.current.rotation.x = -stride * 0.5;
-          if (rightArmRef.current) rightArmRef.current.rotation.x = stride * 0.5;
-        }
-        body.rotation.z = stride * 0.05;
         const nextPos = posAt(Math.min(1, eased + 0.05));
-        body.rotation.y = Math.atan2(nextPos.x - pos.x, nextPos.z - pos.z);
+        body.rotation.y = Math.atan2(nextPos.x - pos.x, nextPos.z - pos.z) + PLAYER_YAW_OFFSET;
       } else if (fallOnImpact && !fallen.current) {
         fallen.current = true;
-      }
-      if (!moving && !fallen.current) {
-        // Settle the stride back to a neutral standing pose once the play ends.
-        for (const limb of [leftLegRef, rightLegRef, leftArmRef, rightArmRef]) {
-          if (limb.current) limb.current.rotation.x = THREE.MathUtils.lerp(limb.current.rotation.x, 0, 0.3);
-        }
       }
       if (fallen.current) {
         body.rotation.x = THREE.MathUtils.lerp(body.rotation.x, Math.PI / 2.1, 0.25);
@@ -352,63 +372,8 @@ function PlayerMesh({
 
   return (
     <group ref={groupRef} position={start} key={`${motion.key}-${playIndex}`}>
-      <group ref={bodyRef}>
-        {/* hips/pants */}
-        <mesh position={[0, 0.5, 0]} castShadow>
-          <boxGeometry args={[0.46, 0.24, 0.28]} />
-          <meshStandardMaterial color="#1f2937" roughness={0.8} />
-        </mesh>
-        {/* torso/jersey */}
-        <mesh position={[0, 0.94, 0]} castShadow>
-          <capsuleGeometry args={[0.3, 0.42, 4, 8]} />
-          <meshStandardMaterial color={motion.color} roughness={0.6} />
-        </mesh>
-        {/* helmet */}
-        <mesh position={[0, 1.55, 0]} castShadow>
-          <sphereGeometry args={[0.27, 14, 14]} />
-          <meshStandardMaterial color={motion.ring} roughness={0.25} metalness={0.15} />
-        </mesh>
-        {/* facemask */}
-        <mesh position={[0, 1.49, 0.25]} castShadow>
-          <boxGeometry args={[0.16, 0.1, 0.06]} />
-          <meshStandardMaterial color="#1f2937" roughness={0.4} metalness={0.3} />
-        </mesh>
-
-        {/* arms, pivoted at the shoulder so they swing with the stride */}
-        <group ref={leftArmRef} position={[-0.4, 1.3, 0]}>
-          <mesh position={[0, -0.24, 0]} castShadow>
-            <capsuleGeometry args={[0.1, 0.36, 4, 8]} />
-            <meshStandardMaterial color={motion.color} roughness={0.6} />
-          </mesh>
-        </group>
-        <group ref={rightArmRef} position={[0.4, 1.3, 0]}>
-          <mesh position={[0, -0.24, 0]} castShadow>
-            <capsuleGeometry args={[0.1, 0.36, 4, 8]} />
-            <meshStandardMaterial color={motion.color} roughness={0.6} />
-          </mesh>
-        </group>
-
-        {/* legs, pivoted at the hip so they swing with the stride */}
-        <group ref={leftLegRef} position={[-0.16, 0.5, 0]}>
-          <mesh position={[0, -0.28, 0]} castShadow>
-            <capsuleGeometry args={[0.14, 0.42, 4, 8]} />
-            <meshStandardMaterial color="#1f2937" roughness={0.8} />
-          </mesh>
-          <mesh position={[0, -0.56, 0.06]} castShadow>
-            <boxGeometry args={[0.16, 0.1, 0.24]} />
-            <meshStandardMaterial color="#111827" roughness={0.6} />
-          </mesh>
-        </group>
-        <group ref={rightLegRef} position={[0.16, 0.5, 0]}>
-          <mesh position={[0, -0.28, 0]} castShadow>
-            <capsuleGeometry args={[0.14, 0.42, 4, 8]} />
-            <meshStandardMaterial color="#1f2937" roughness={0.8} />
-          </mesh>
-          <mesh position={[0, -0.56, 0.06]} castShadow>
-            <boxGeometry args={[0.16, 0.1, 0.24]} />
-            <meshStandardMaterial color="#111827" roughness={0.6} />
-          </mesh>
-        </group>
+      <group ref={bodyRef} scale={modelScale} position={[0, modelYOffset, 0]}>
+        <primitive object={clonedScene} />
       </group>
     </group>
   );
@@ -538,6 +503,11 @@ export function Field3D({
           {lineOfScrimmageX !== null && <FieldLine x={lineOfScrimmageX} color="#60a5fa" />}
           {firstDownX !== null && <FieldLine x={firstDownX} color="#facc15" />}
 
+          {/* Only the player meshes suspend (loading the shared glTF model)
+              — scoped narrowly so the field/lights/goalposts still render
+              immediately instead of the whole scene going blank while it
+              loads, the way an earlier full-scene Suspense boundary once did. */}
+          <Suspense fallback={null}>
           {players.map((p) => {
             // Tacklers go down on any run/sack; the man who actually had the
             // ball (runner or sacked QB) goes down too — unless he just
@@ -558,15 +528,6 @@ export function Field3D({
               />
             );
           })}
-
-          <Ball
-            from={{ x: ballFromX, y: 150 }}
-            to={{ x: isKickAttempt ? ballToX : ballToX, y: ballToY }}
-            toY={ballToY}
-            durationMs={motionDurationMs}
-            kind={kind}
-            playIndex={playIndex}
-          />
           {ballCarrierRides && (
             <PlayerMesh
               key={`carrier-${playIndex}`}
@@ -586,6 +547,16 @@ export function Field3D({
               fallOnImpact={!scoredThisPlay}
             />
           )}
+          </Suspense>
+
+          <Ball
+            from={{ x: ballFromX, y: 150 }}
+            to={{ x: isKickAttempt ? ballToX : ballToX, y: ballToY }}
+            toY={ballToY}
+            durationMs={motionDurationMs}
+            kind={kind}
+            playIndex={playIndex}
+          />
 
           {scoredThisPlay && <pointLight position={[toWorldX(ballToX), 8, 0]} intensity={2.2} color="#f5a623" distance={30} />}
           {kickMissed && <pointLight position={[toWorldX(ballToX), 4, toWorldZ(ballToY)]} intensity={1.4} color="#f87171" distance={20} />}
