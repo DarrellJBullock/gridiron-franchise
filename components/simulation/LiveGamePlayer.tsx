@@ -11,7 +11,7 @@ import type { Field3DProps } from "@/components/simulation/field3d/Field3D";
 import { homeCrowdReaction } from "@/lib/simulation/crowd-reaction";
 import { playCheer, playBoo, playRoar, unlockCrowdAudio } from "@/lib/audio/crowd";
 import type { PlayByPlayEntry } from "@/types/football";
-import type { PlayerMotion } from "@/components/simulation/field3d/Field3D";
+import type { PlayerMotion, CameraEvent } from "@/components/simulation/field3d/Field3D";
 
 // Three.js touches document/WebGL at render time, which crashes during
 // Next.js's server render of this "use client" component's first pass —
@@ -848,6 +848,21 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
     (passOutcome === "incomplete" && targetReceiver ? targetReceiver.endY + incompleteMissY : targetReceiver?.endY) ??
     150;
 
+  // What this play's outcome looks like to the camera (see CameraRig) —
+  // purely a label for "how should this look," derived from data we've
+  // already resolved above, not new state of its own.
+  const cameraEvent: CameraEvent = scoredThisPlay
+    ? "score"
+    : kind === "pass"
+      ? passOutcome === "incomplete"
+        ? "miss"
+        : "catch"
+      : kind === "run" || kind === "sack"
+        ? "tackle"
+        : kind === "kick" && kickMissed
+          ? "miss"
+          : null;
+
   // On a real run/touchdown, the RB's route is overridden entirely: instead
   // of its formation-table finish, it runs to wherever the QB ends up (the
   // exchange point) and then on to the play's actual result — a real
@@ -938,6 +953,7 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
             ballToY={isKickAttempt ? kickTargetY : kind === "pass" ? passTargetY : 150}
             lineOfScrimmageX={index >= 0 ? ballX : null}
             firstDownX={firstDownX}
+            cameraEvent={cameraEvent}
             players={players3D}
             ballCarrierRides={ballCarrierRuns}
           />
