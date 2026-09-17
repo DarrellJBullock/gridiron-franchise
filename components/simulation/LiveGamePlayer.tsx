@@ -442,6 +442,12 @@ function extraMotion(role: string, kind: MotionKind, index: number, localY: numb
       switch (role) {
         case "QB":
           return { x: 3, y: 0 };
+        case "RB":
+          // Fallback only — a real run/touchdown play overrides the RB's
+          // whole route with an explicit handoff-and-carry path below, so
+          // this is just a reasonable burst for the rare case (a fumble)
+          // that reaches here without going through that override.
+          return { x: 14, y: 0 };
         case "TE":
           return { x: 9, y: 0 };
         case "WR":
@@ -462,6 +468,14 @@ function extraMotion(role: string, kind: MotionKind, index: number, localY: numb
           return { x: 13, y: 0 };
         default:
           return role === "OL" ? { x: -3, y: 0 } : { x: 0, y: 0 };
+      }
+    case "kick":
+      switch (role) {
+        case "K":
+        case "P":
+          return { x: 5, y: 0 }; // the approach steps into the kick
+        default:
+          return { x: 0, y: 0 }; // protection holds its blocks
       }
     default:
       return { x: 0, y: 0 };
@@ -674,7 +688,14 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
       : isReturnPlay
         ? buildFormation(DEFENSE_RETURN_COVERAGE, prevBallX, ballX, forwardSign, kind, `def-${index}`)
         : [];
-  const ballCarrierRuns = kind === "run" && current.playType !== "sack";
+  // A real run (or a running touchdown) gets an actual QB-to-RB handoff:
+  // the running back's own dot — not an anonymous ball-carrier mesh — takes
+  // the ball, so the exchange and the carry are the same player. Returns and
+  // fumbles fall back to the generic anonymous carrier below (there's no RB
+  // pre-snap dot to hand off to on a return, and a fumble's post-recovery
+  // path doesn't really belong to any one formation slot).
+  const isRbRunPlay = kind === "run" && (current.playType === "run" || current.playType === "touchdown");
+  const ballCarrierRuns = kind === "run" && current.playType !== "sack" && !isRbRunPlay;
 
   // For a run/sack, whichever defender ends up closest to where the play
   // dies is the one who gets the tackle animation.
@@ -733,22 +754,33 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
     (passOutcome === "incomplete" && targetReceiver ? targetReceiver.endY + incompleteMissY : targetReceiver?.endY) ??
     150;
 
+  // On a real run/touchdown, the RB's route is overridden entirely: instead
+  // of its formation-table finish, it runs to wherever the QB ends up (the
+  // exchange point) and then on to the play's actual result — a real
+  // handoff-and-carry path rather than a generic drive-block shuffle.
+  const handoffQb = isRbRunPlay ? offenseDots.find((d) => d.role === "QB") : null;
+
   const players3D: PlayerMotion[] = [
-    ...offenseDots.map((d) => ({
-      key: d.key,
-      startX: d.startX,
-      startY: d.startY,
-      endX: d.endX,
-      endY: d.endY,
-      color: offenseTeam.primaryColor,
-      ring: offenseTeam.secondaryColor,
-      viaX: d.viaX,
-      viaY: d.viaY,
-      isKicker: d.role === "K" || d.role === "P",
-      isPasser: kind === "pass" && d.role === "QB",
-      isReceiver: passOutcome === "complete" && targetReceiver !== null && d.key === targetReceiver.key,
-      isBallHandler: kind === "sack" && d.role === "QB",
-    })),
+    ...offenseDots.map((d) => {
+      const isBallCarrierRb = isRbRunPlay && d.role === "RB";
+      return {
+        key: d.key,
+        startX: d.startX,
+        startY: d.startY,
+        endX: isBallCarrierRb ? ballX : d.endX,
+        endY: isBallCarrierRb ? 150 : d.endY,
+        color: offenseTeam.primaryColor,
+        ring: offenseTeam.secondaryColor,
+        viaX: isBallCarrierRb ? handoffQb?.endX : d.viaX,
+        viaY: isBallCarrierRb ? handoffQb?.endY : d.viaY,
+        isKicker: d.role === "K" || d.role === "P",
+        isPasser: kind === "pass" && d.role === "QB",
+        isReceiver: passOutcome === "complete" && targetReceiver !== null && d.key === targetReceiver.key,
+        isBallHandler: (kind === "sack" && d.role === "QB") || isBallCarrierRb,
+        isCarrier: isBallCarrierRb,
+        isHandingOff: isRbRunPlay && d.role === "QB",
+      };
+    }),
     ...defenseDots.map((d) => ({
       key: d.key,
       startX: d.startX,
