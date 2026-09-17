@@ -888,6 +888,9 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
         isBallHandler: (kind === "sack" && d.role === "QB") || isBallCarrierRb,
         isCarrier: isBallCarrierRb,
         isHandingOff: isRbRunPlay && d.role === "QB",
+        // The broken-tackle run's ball carrier is the one juking — reuses
+        // the outcome already resolved above rather than new state.
+        playsJuke: isBallCarrierRb && isBrokenTackleRun,
       };
     }),
     ...defenseDots.map((d) => {
@@ -951,6 +954,8 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
             ballFromX={prevBallX}
             ballToX={isKickAttempt ? kickTargetX : kind === "pass" ? passTargetX : ballX}
             ballToY={isKickAttempt ? kickTargetY : kind === "pass" ? passTargetY : 150}
+            ballViaX={isRbRunPlay ? handoffQb?.endX : undefined}
+            ballViaY={isRbRunPlay ? handoffQb?.endY : undefined}
             lineOfScrimmageX={index >= 0 ? ballX : null}
             firstDownX={firstDownX}
             cameraEvent={cameraEvent}

@@ -32,28 +32,49 @@ useTexture.preload(GRASS_DIFFUSE_URL);
 useTexture.preload(GRASS_NORMAL_URL);
 
 // A real rigged, skinned, animated humanoid model stands in for the old
-// hand-built capsule rig — "CesiumMan", a Khronos glTF sample asset (CC-BY
-// 4.0, © Cesium; see README for the attribution this license requires).
-// It's generic and ships with exactly one walk-cycle animation, which is
-// the tradeoff of a free asset over a licensed/custom football rig: there's
-// no throw/kick/catch/handoff-specific mocap, so those moments just play
-// the same walk cycle rather than a dedicated pose.
+// hand-built capsule rig — "Mannequiny" by GDQuest (CC-BY 4.0; see README
+// for the attribution this license requires). Unlike the single-clip model
+// used before this, it ships a real set of named locomotion/action clips
+// (run, walk, idle, dash, air_jump, fight_punch, fight_kick, ...), which is
+// what makes real crossfade blending between run/cut/catch/tackle possible
+// instead of one clip played at every moment.
 const PLAYER_MODEL_URL = "/models/player.glb";
 useGLTF.preload(PLAYER_MODEL_URL);
 
-// The model's authored scale and default facing direction don't match our
-// world units or forward-facing convention. PLAYER_MODEL_LOCAL_HEIGHT is
-// measured directly from the model's glTF position accessor (its own local
-// bind-pose bounding box, read straight from the file) rather than computed
-// at runtime via THREE.Box3 — Box3.setFromObject doesn't reliably measure a
-// SkinnedMesh's true extent (it ignores skin/bone deformation), which
-// previously made every player render several times too large. PLAYER_YAW_OFFSET
+// The model's authored scale doesn't exactly match our world units.
+// PLAYER_MODEL_LOCAL_HEIGHT is measured directly from the model's glTF
+// position accessor (its own local bind-pose bounding box, read straight
+// from the file) rather than computed at runtime via THREE.Box3 —
+// Box3.setFromObject doesn't reliably measure a SkinnedMesh's true extent
+// (it ignores skin/bone deformation), which previously made every player
+// render several times too large with an earlier model. PLAYER_YAW_OFFSET
 // is a manual correction if the model ends up facing the wrong way — nudge
-// it by increments of Math.PI / 2 if so.
+// it by increments of Math.PI / 2 if so (unverified for this model: the
+// rendering environment this was built in couldn't visually confirm it).
 const PLAYER_TARGET_HEIGHT = 1.8;
-const PLAYER_MODEL_LOCAL_HEIGHT = 1.5065;
+const PLAYER_MODEL_LOCAL_HEIGHT = 1.798;
 const PLAYER_SCALE = PLAYER_TARGET_HEIGHT / PLAYER_MODEL_LOCAL_HEIGHT;
 const PLAYER_YAW_OFFSET = 0;
+
+// Named clips this model ships with that the animation state machine below
+// actually uses — run (default locomotion), dash (cut/juke), air_jump
+// (catch — reaching up for the ball), fight_punch (tackle impact), and idle
+// (at rest). The model has other clips (walk, fight_kick, air_land, ...)
+// not used here; this project doesn't have football-specific mocap
+// (throw/snap/handoff still use hand-built poses elsewhere in this file).
+const CLIP_RUN = "run";
+const CLIP_IDLE = "idle";
+const CLIP_JUKE = "dash";
+const CLIP_CATCH = "air_jump";
+const CLIP_TACKLE = "fight_punch";
+// The last stretch of a play's motion where a catch/tackle flourish plays,
+// matching CameraRig's own "quick cut" window so the animation flourish and
+// the camera's tighter framing land at the same moment.
+const CLIMAX_PROGRESS = 0.82;
+// The juke window is a broken-tackle run's midpoint, not its end — it's the
+// move that breaks the tackle, not the finish.
+const JUKE_PROGRESS_START = 0.32;
+const JUKE_PROGRESS_END = 0.58;
 
 interface TeamVisual {
   abbreviation: string;
@@ -95,6 +116,9 @@ export interface PlayerMotion {
   // he lunges for the carrier and comes up empty well before the real
   // tackle happens at the actual end spot.
   earlyFallProgress?: number;
+  // Plays the "dash" cut/juke clip partway through the play instead of the
+  // default run cycle — set on a broken-tackle run's ball carrier.
+  playsJuke?: boolean;
 }
 
 export type MotionKind = "pass" | "run" | "sack" | "kick" | "straight";
@@ -111,6 +135,10 @@ export interface Field3DProps {
   ballFromX: number; // 0-1000
   ballToX: number;
   ballToY: number; // 0-300, usually 150 except a missed kick's lateral miss
+  // A handoff's ball bends through the QB exchange point, same as the
+  // ball-carrying player's own via bend — undefined for a straight path.
+  ballViaX?: number;
+  ballViaY?: number;
   lineOfScrimmageX: number | null;
   firstDownX: number | null;
   players: PlayerMotion[];
@@ -277,10 +305,10 @@ function Goalpost({ x }: { x: number }) {
 }
 
 // A real skinned, rigged player model (see PLAYER_MODEL_URL above), tinted
-// per team and driven by its single walk-cycle clip while moving. Position
-// is still hand-animated every frame from a per-mesh progress ref (not
-// React state) — useFrame keeps 22 moving players cheap — only the *body*
-// rendering changed from hand-built primitives to a real animated mesh.
+// per team and crossfaded between named clips (run/dash/air_jump/
+// fight_punch/idle) as the play develops, instead of one clip played
+// everywhere. Position is still hand-animated every frame from a per-mesh
+// progress ref (not React state) — useFrame keeps 22 moving players cheap.
 function PlayerMesh({
   motion,
   durationMs,
@@ -303,12 +331,13 @@ function PlayerMesh({
   // handle bone bindings) gives every instance its own rig while still
   // sharing the underlying geometry/animation data.
   const clonedScene = useMemo(() => SkeletonUtils.clone(scene) as THREE.Group, [scene]);
-  const walkClip = animations[0] ?? null;
-  // The mixer/action live in a ref (not a variable captured from the useGLTF
+  // The mixer/actions live in refs (not variables captured from the useGLTF
   // hook) purely so useFrame below is free to mutate playback state every
   // frame — the lint rule that caught the earlier useThree()/camera mutation
   // applies the same way to hook-returned animation objects.
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const actionsRef = useRef<Partial<Record<string, THREE.AnimationAction>>>({});
+  const activeClipRef = useRef<string | null>(null);
 
   useEffect(() => {
     clonedScene.traverse((child) => {
@@ -327,12 +356,39 @@ function PlayerMesh({
   useEffect(() => {
     const mixer = new THREE.AnimationMixer(clonedScene);
     mixerRef.current = mixer;
-    if (walkClip) mixer.clipAction(walkClip).reset().play();
+    const actions: Partial<Record<string, THREE.AnimationAction>> = {};
+    for (const name of [CLIP_RUN, CLIP_IDLE, CLIP_JUKE, CLIP_CATCH, CLIP_TACKLE]) {
+      const clip = THREE.AnimationClip.findByName(animations, name);
+      if (clip) actions[name] = mixer.clipAction(clip);
+    }
+    actionsRef.current = actions;
+    // Nearly every player starts moving immediately (there's no modeled
+    // pre-snap hold), so start on the run cycle rather than idle.
+    const initialName = actions[CLIP_RUN] ? CLIP_RUN : Object.keys(actions)[0];
+    const initial = initialName ? actions[initialName] : undefined;
+    initial?.reset().play();
+    activeClipRef.current = initial ? initialName! : null;
     return () => {
       mixer.stopAllAction();
       mixerRef.current = null;
+      actionsRef.current = {};
+      activeClipRef.current = null;
     };
-  }, [clonedScene, walkClip]);
+  }, [clonedScene, animations]);
+
+  // Crossfades from whatever's currently playing into `name`, the standard
+  // three.js AnimationMixer recipe (fade the old action out, fade the new
+  // one in) instead of a hard pose snap. A no-op if `name` is already
+  // active or isn't one of the clips this model actually has.
+  function playClip(name: string, fadeSeconds = 0.25) {
+    if (activeClipRef.current === name) return;
+    const next = actionsRef.current[name];
+    if (!next) return;
+    const prev = activeClipRef.current ? actionsRef.current[activeClipRef.current] : undefined;
+    next.reset().setEffectiveWeight(1).fadeIn(fadeSeconds).play();
+    prev?.fadeOut(fadeSeconds);
+    activeClipRef.current = name;
+  }
 
   const start = useMemo(
     () => new THREE.Vector3(toWorldX(motion.startX), 0, toWorldZ(motion.startY)),
@@ -391,14 +447,32 @@ function PlayerMesh({
     const bob = moving ? Math.abs(Math.sin(state.clock.elapsedTime * 9)) * 0.12 : 0;
     g.position.y = bob;
 
-    const mixer = mixerRef.current;
-    if (mixer && walkClip) {
-      const action = mixer.existingAction(walkClip);
-      if (action) {
-        action.paused = !moving || fallen.current;
-        action.timeScale = motion.isCarrier ? 1.35 : 1.1;
+    // Which clip should be playing right now, purely a function of this
+    // player's own resolved motion data (isReceiver, playsJuke,
+    // effectiveFallOnImpact) and how far along the play is — not new state.
+    if (!fallen.current) {
+      const inClimax = progress > CLIMAX_PROGRESS;
+      let desiredClip: string = CLIP_RUN;
+      if (!moving) {
+        desiredClip = effectiveFallOnImpact ? CLIP_TACKLE : CLIP_IDLE;
+      } else if (motion.isReceiver && inClimax) {
+        desiredClip = CLIP_CATCH;
+      } else if (effectiveFallOnImpact && inClimax) {
+        desiredClip = CLIP_TACKLE;
+      } else if (motion.playsJuke && progress > JUKE_PROGRESS_START && progress < JUKE_PROGRESS_END) {
+        desiredClip = CLIP_JUKE;
       }
-      mixer.update(delta);
+      playClip(desiredClip);
+
+      if (activeClipRef.current === CLIP_RUN || activeClipRef.current === CLIP_JUKE) {
+        // .setEffectiveTimeScale (a method call) rather than assigning
+        // `.timeScale` directly — same effect, but assigning a property on
+        // a value read back out of a ref populated inside an effect trips
+        // this codebase's react-hooks/immutability rule (see mixerRef/
+        // action.paused precedent elsewhere in this file).
+        mixerRef.current?.existingAction(activeClipRef.current)?.setEffectiveTimeScale(motion.isCarrier ? 1.35 : 1.1);
+      }
+      mixerRef.current?.update(delta);
     }
 
     const body = bodyRef.current;
@@ -432,6 +506,7 @@ function Ball({
   from,
   to,
   toY,
+  via,
   durationMs,
   kind,
   playIndex,
@@ -439,6 +514,11 @@ function Ball({
   from: { x: number; y: number };
   to: { x: number; y: number };
   toY: number;
+  // A handoff's ball carrier bends through the QB exchange point rather
+  // than running straight from snap to result (see PlayerMesh's own via
+  // bend) — the ball needs the same bend, or it visibly drifts away from
+  // the runner actually carrying it.
+  via?: { x: number; y: number } | null;
   durationMs: number;
   kind: MotionKind;
   playIndex: number;
@@ -448,6 +528,16 @@ function Ball({
   const startedAt = useRef(0);
   const start = useMemo(() => new THREE.Vector3(toWorldX(from.x), 1.1, toWorldZ(from.y)), [from.x, from.y]);
   const end = useMemo(() => new THREE.Vector3(toWorldX(to.x), 1.1, toWorldZ(toY)), [to.x, toY]);
+  const viaPoint = useMemo(
+    () => (via ? new THREE.Vector3(toWorldX(via.x), 1.1, toWorldZ(via.y)) : null),
+    [via]
+  );
+  const posAt = (t: number) => {
+    if (!viaPoint) return new THREE.Vector3().lerpVectors(start, end, t);
+    const a = new THREE.Vector3().lerpVectors(start, viaPoint, t);
+    const b = new THREE.Vector3().lerpVectors(viaPoint, end, t);
+    return a.lerp(b, t);
+  };
   const airborne = kind === "pass" || kind === "kick";
   const peakHeight = airborne ? Math.min(14, 3 + start.distanceTo(end) * 0.35) : 1.4;
   // A real spiral: the ball's long axis points along its actual direction of
@@ -461,6 +551,10 @@ function Ball({
   const spinAxis = useMemo(() => new THREE.Vector3(1, 0, 0), []);
   const spinQuat = useMemo(() => new THREE.Quaternion(), []);
   const orientation = useMemo(() => new THREE.Quaternion(), []);
+  const yAxis = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+  const xAxis = useMemo(() => new THREE.Vector3(1, 0, 0), []);
+  const carryQuat = useMemo(() => new THREE.Quaternion(), []);
+  const tuckQuat = useMemo(() => new THREE.Quaternion(), []);
 
   useFrame((state) => {
     if (startedAt.current === 0) startedAt.current = state.clock.elapsedTime;
@@ -468,7 +562,9 @@ function Ball({
     const progress = Math.max(0, Math.min(1, elapsedMs / durationMs));
     const g = ref.current;
     if (!g) return;
-    g.position.lerpVectors(start, end, progress);
+    const pos = posAt(progress);
+    g.position.x = pos.x;
+    g.position.z = pos.z;
     const arc = Math.sin(progress * Math.PI) * peakHeight;
     g.position.y = start.y + arc;
 
@@ -494,8 +590,17 @@ function Ball({
       orientation.copy(yawQuat).multiply(tiltQuat).multiply(spinQuat);
       g.quaternion.copy(orientation);
     } else {
-      g.rotation.x += kind === "sack" ? 0 : 0.25;
-      g.rotation.z = progress * 3;
+      // A carried ball is gripped, not tumbling — it stays roughly fixed
+      // under the arm (a small forward/downward tuck) and just turns to
+      // face wherever the carrier is actually heading at this instant
+      // (accounting for the handoff's via bend), instead of spinning in
+      // place every frame regardless of how much time has passed.
+      const next = posAt(Math.min(1, progress + 0.05));
+      const travelYaw = Math.atan2(next.x - pos.x, next.z - pos.z);
+      carryQuat.setFromAxisAngle(yAxis, travelYaw);
+      tuckQuat.setFromAxisAngle(xAxis, 0.4);
+      orientation.copy(carryQuat).multiply(tuckQuat);
+      g.quaternion.copy(orientation);
     }
   });
 
@@ -503,13 +608,18 @@ function Ball({
     <>
       {airborne && (
         <mesh ref={shadowRef} position={[start.x, 0.03, start.z]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[0.55, 16]} />
+          <circleGeometry args={[0.35, 16]} />
           <meshBasicMaterial color="#000000" transparent opacity={0.35} depthWrite={false} />
         </mesh>
       )}
       <group ref={ref} position={start} key={`ball-${playIndex}`}>
         <mesh castShadow>
-          <capsuleGeometry args={[0.28, 0.4, 4, 8]} />
+          {/* A real football is ~28cm tip-to-tip, ~0.3 world units at this
+              scale (1 unit = 1 yard) — the previous 0.28/0.4 capsule was
+              nearly a full unit tall, close to a third of a player's own
+              height, and read as comically oversized next to a
+              realistically-scaled human model. */}
+          <capsuleGeometry args={[0.09, 0.16, 4, 8]} />
           <meshStandardMaterial color="#A0522D" roughness={0.4} emissive="#3a1a08" emissiveIntensity={0.3} />
         </mesh>
       </group>
@@ -529,6 +639,8 @@ export function Field3D({
   ballFromX,
   ballToX,
   ballToY,
+  ballViaX,
+  ballViaY,
   lineOfScrimmageX,
   firstDownX,
   players,
@@ -621,6 +733,7 @@ export function Field3D({
             from={{ x: ballFromX, y: 150 }}
             to={{ x: isKickAttempt ? ballToX : ballToX, y: ballToY }}
             toY={ballToY}
+            via={ballViaX !== undefined && ballViaY !== undefined ? { x: ballViaX, y: ballViaY } : null}
             durationMs={motionDurationMs}
             kind={kind}
             playIndex={playIndex}
