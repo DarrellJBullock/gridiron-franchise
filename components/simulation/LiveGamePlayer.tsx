@@ -387,11 +387,21 @@ interface FormationDot {
   viaY?: number;
 }
 
+// A handful of real route shapes, cycled across the WR corps by index. Each
+// pairs a downfield depth/lateral finish (used by extraMotion below) with a
+// route-break style (used by wrViaPoint) so the routes actually read as
+// different shapes rather than one generic stem-and-cut for every receiver.
+type WrRoute = "go" | "out" | "slant" | "comeback";
+const WR_ROUTES: readonly WrRoute[] = ["go", "out", "slant", "comeback"];
+function wrRoute(index: number): WrRoute {
+  return WR_ROUTES[index % WR_ROUTES.length];
+}
+
 // How far (and which way, laterally) each role moves downfield over the
 // course of the play, in the same local-offset units as the formation
 // tables above — not a real route tree, just enough per-role variety to
 // read as "the play developed" instead of 22 players frozen at the snap.
-function extraMotion(role: string, kind: MotionKind, index: number): { x: number; y: number } {
+function extraMotion(role: string, kind: MotionKind, index: number, localY: number): { x: number; y: number } {
   switch (kind) {
     case "pass":
       switch (role) {
@@ -402,9 +412,20 @@ function extraMotion(role: string, kind: MotionKind, index: number): { x: number
         case "TE":
           return { x: 16, y: 8 };
         case "WR": {
-          const depth = [34, 22, 44][index % 3];
-          const lateral = [6, -8, -12][index % 3];
-          return { x: depth, y: lateral };
+          // A route breaks toward the boundary this receiver is already
+          // split toward (out) or back across the field (slant) — not a
+          // fixed left/right offset regardless of where he lined up.
+          const side = localY < 0 ? -1 : 1;
+          switch (wrRoute(index)) {
+            case "go":
+              return { x: 46, y: side * 4 }; // straight fly route up the seam/sideline
+            case "out":
+              return { x: 20, y: side * 34 }; // breaks hard toward his own sideline
+            case "slant":
+              return { x: 14, y: -side * 22 }; // quick break across the middle
+            case "comeback":
+              return { x: 26, y: side * 6 }; // pushes vertical, settles back toward the QB
+          }
         }
         case "DL":
           return { x: 11, y: 0 };
@@ -462,6 +483,27 @@ function clampField(x: number, y: number) {
   };
 }
 
+// The route-break shape for a given WR's route type: a "go" runs a straight
+// stem with no break, "out"/"slant" hold their stem lateral before cutting
+// hard to the finish, and "comeback" pushes a few yards past the settle
+// point before working back toward the quarterback — an overshoot the
+// quadratic curve eases out of rather than a literal reversal.
+function wrViaPoint(
+  route: WrRoute,
+  start: { x: number; y: number },
+  end: { x: number; y: number }
+): { x: number; y: number } | null {
+  switch (route) {
+    case "go":
+      return null;
+    case "out":
+    case "slant":
+      return { x: start.x + (end.x - start.x) * 0.65, y: start.y };
+    case "comeback":
+      return { x: end.x + (end.x - start.x) * 0.25, y: end.y };
+  }
+}
+
 function buildFormation(
   local: readonly FormationSlot[],
   startBallX: number,
@@ -472,14 +514,15 @@ function buildFormation(
 ): FormationDot[] {
   return local.map((p, i) => {
     const role = p.role;
-    const extra = extraMotion(role, kind, i);
+    const extra = extraMotion(role, kind, i, p.y);
     const conv = lateralConvergence(role, kind);
     const start = clampField(startBallX + forwardSign * p.x, 150 + p.y);
     const end = clampField(endBallX + forwardSign * (p.x + extra.x), 150 + p.y * conv + extra.y);
-    // Receivers run a route, not a straight line: hold their stem lateral
-    // for the first ~60% of the play, then break to the final landing spot.
     const isRoute = kind === "pass" && (role === "WR" || role === "TE");
-    const via = isRoute ? clampField(start.x + (end.x - start.x) * 0.6, start.y) : null;
+    // WRs get a real route shape; a lone TE just holds its old generic
+    // stem-and-cut (its routes are short and don't vary much anyway).
+    const rawVia = isRoute ? (role === "WR" ? wrViaPoint(wrRoute(i), start, end) : { x: start.x + (end.x - start.x) * 0.6, y: start.y }) : null;
+    const via = rawVia ? clampField(rawVia.x, rawVia.y) : null;
     return {
       key: `${prefix}-${i}`,
       role,
@@ -646,25 +689,49 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
 
   // A pass targets an actual receiver rather than a generic midfield spot:
   // whichever eligible receiver's route ends closest to where the play's
-  // real result landed is treated as the intended target. Interceptions
-  // instead target the nearest defensive back/safety, so the ball visibly
-  // travels to the man who made the pick.
+  // real result landed is treated as the intended target. What happens at
+  // the catch point then depends on how the play actually resolved —
+  // completions land in the receiver's hands, interceptions go to the
+  // nearest DB instead, and incompletions sail just past the intended
+  // target's outstretched hand rather than landing in it.
+  const passOutcome: "complete" | "incomplete" | "interception" =
+    current.playType === "interception" ? "interception" : current.playType === "incomplete" ? "incomplete" : "complete";
   const eligibleReceivers = kind === "pass" ? offenseDots.filter((d) => d.role === "WR" || d.role === "TE") : [];
   const targetReceiver =
-    current.playType !== "interception" && eligibleReceivers.length > 0
+    passOutcome !== "interception" && eligibleReceivers.length > 0
       ? eligibleReceivers.reduce((closest, d) => (Math.abs(d.endX - ballX) < Math.abs(closest.endX - ballX) ? d : closest))
       : null;
   const coverageDefenders = kind === "pass" ? defenseDots.filter((d) => d.role === "CB" || d.role === "S") : [];
   const interceptor =
-    current.playType === "interception" && coverageDefenders.length > 0
+    passOutcome === "interception" && coverageDefenders.length > 0
       ? coverageDefenders.reduce((closest, d) => {
           const dist = Math.hypot(d.endX - ballX, d.endY - 150);
           const closestDist = Math.hypot(closest.endX - ballX, closest.endY - 150);
           return dist < closestDist ? d : closest;
         })
       : null;
-  const passTargetX = interceptor?.endX ?? targetReceiver?.endX ?? ballX;
-  const passTargetY = interceptor?.endY ?? targetReceiver?.endY ?? 150;
+  // Whichever DB ends up nearest the intended target is the one who broke
+  // the pass up.
+  const breakupDefender =
+    passOutcome === "incomplete" && targetReceiver && coverageDefenders.length > 0
+      ? coverageDefenders.reduce((closest, d) => {
+          const dist = Math.hypot(d.endX - targetReceiver.endX, d.endY - targetReceiver.endY);
+          const closestDist = Math.hypot(closest.endX - targetReceiver.endX, closest.endY - targetReceiver.endY);
+          return dist < closestDist ? d : closest;
+        })
+      : null;
+  // A near miss — the ball sails a few yards past or wide of the target
+  // instead of settling exactly into his hands.
+  const incompleteMissX = current.sequence % 2 === 0 ? -16 : 16;
+  const incompleteMissY = current.sequence % 3 === 0 ? -20 : 20;
+  const passTargetX =
+    interceptor?.endX ??
+    (passOutcome === "incomplete" && targetReceiver ? targetReceiver.endX + incompleteMissX : targetReceiver?.endX) ??
+    ballX;
+  const passTargetY =
+    interceptor?.endY ??
+    (passOutcome === "incomplete" && targetReceiver ? targetReceiver.endY + incompleteMissY : targetReceiver?.endY) ??
+    150;
 
   const players3D: PlayerMotion[] = [
     ...offenseDots.map((d) => ({
@@ -679,7 +746,7 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
       viaY: d.viaY,
       isKicker: d.role === "K" || d.role === "P",
       isPasser: kind === "pass" && d.role === "QB",
-      isReceiver: kind === "pass" && targetReceiver !== null && d.key === targetReceiver.key,
+      isReceiver: passOutcome === "complete" && targetReceiver !== null && d.key === targetReceiver.key,
       isBallHandler: kind === "sack" && d.role === "QB",
     })),
     ...defenseDots.map((d) => ({
@@ -691,6 +758,7 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
       color: defenseTeam.primaryColor,
       ring: defenseTeam.secondaryColor,
       isTackler: d.key === tacklerKey,
+      isReceiver: d.key === interceptor?.key || d.key === breakupDefender?.key,
     })),
   ];
 

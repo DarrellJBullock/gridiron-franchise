@@ -425,6 +425,17 @@ function Ball({
   const end = useMemo(() => new THREE.Vector3(toWorldX(to.x), 1.1, toWorldZ(toY)), [to.x, toY]);
   const airborne = kind === "pass" || kind === "kick";
   const peakHeight = airborne ? Math.min(14, 3 + start.distanceTo(end) * 0.35) : 1.4;
+  // A real spiral: the ball's long axis points along its actual direction of
+  // travel (not just an arbitrary spin), tilted flat so it "spins" nose-first
+  // like a real thrown football rather than tumbling end over end.
+  const yawQuat = useMemo(() => {
+    const yaw = Math.atan2(end.x - start.x, end.z - start.z);
+    return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+  }, [start, end]);
+  const tiltQuat = useMemo(() => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2), []);
+  const spinAxis = useMemo(() => new THREE.Vector3(1, 0, 0), []);
+  const spinQuat = useMemo(() => new THREE.Quaternion(), []);
+  const orientation = useMemo(() => new THREE.Quaternion(), []);
 
   useFrame((state) => {
     if (startedAt.current === 0) startedAt.current = state.clock.elapsedTime;
@@ -435,8 +446,16 @@ function Ball({
     g.position.lerpVectors(start, end, progress);
     const arc = Math.sin(progress * Math.PI) * peakHeight;
     g.position.y = start.y + arc;
-    g.rotation.x += kind === "sack" ? 0 : 0.25;
-    g.rotation.z = progress * (kind === "pass" || kind === "kick" ? 8 : 3);
+
+    if (airborne) {
+      const spinSpeed = kind === "pass" ? 16 : 10;
+      spinQuat.setFromAxisAngle(spinAxis, state.clock.elapsedTime * spinSpeed);
+      orientation.copy(yawQuat).multiply(tiltQuat).multiply(spinQuat);
+      g.quaternion.copy(orientation);
+    } else {
+      g.rotation.x += kind === "sack" ? 0 : 0.25;
+      g.rotation.z = progress * 3;
+    }
   });
 
   return (
