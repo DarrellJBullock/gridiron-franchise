@@ -351,6 +351,31 @@ const DEFENSE_SPECIAL_TEAMS: Record<SpecialTeamsVariant, readonly FormationSlot[
   punt: DEFENSE_PUNT_RETURN,
 };
 
+// A kick/punt return: the receiving team's blockers spread wide ahead of the
+// returner (who is rendered separately as the gold ball-carrier mesh) to
+// spring him, while the kicking team's coverage unit fans out across the
+// whole width and converges on him as the play develops.
+const OFFENSE_RETURN_BLOCKERS: readonly FormationSlot[] = [
+  { x: 20, y: -110, role: "OL" },
+  { x: 20, y: -70, role: "OL" },
+  { x: 20, y: -35, role: "OL" },
+  { x: 20, y: 0, role: "OL" },
+  { x: 20, y: 35, role: "OL" },
+  { x: 20, y: 70, role: "OL" },
+  { x: 20, y: 110, role: "OL" },
+];
+
+const DEFENSE_RETURN_COVERAGE: readonly FormationSlot[] = [
+  { x: 40, y: -120, role: "CB" },
+  { x: 40, y: -85, role: "CB" },
+  { x: 40, y: -50, role: "LB" },
+  { x: 40, y: -15, role: "LB" },
+  { x: 40, y: 15, role: "LB" },
+  { x: 40, y: 50, role: "LB" },
+  { x: 40, y: 85, role: "CB" },
+  { x: 40, y: 120, role: "CB" },
+];
+
 interface FormationDot {
   key: string;
   role: string;
@@ -587,6 +612,7 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   const forwardSign: 1 | -1 = offenseIsHome ? 1 : -1;
   const showFormation = index >= 0 && FORMATION_PLAY_TYPES.has(current.playType);
   const isSpecialTeamsPlay = index >= 0 && (KICK_ATTEMPT_TYPES.has(current.playType) || current.playType === "punt");
+  const isReturnPlay = index >= 0 && (current.playType === "kick_return" || current.playType === "punt_return");
   const formationVariant = selectFormationVariant(current.down, current.distance, current.yardLine);
   const specialTeamsVariant: SpecialTeamsVariant = current.playType === "punt" ? "punt" : "fieldGoal";
   const offenseDots = showFormation
@@ -595,12 +621,16 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
       ? // Protection holds its blocks at the line — anchor start/end to the
         // same spot so linemen don't slide toward wherever the kick lands.
         buildFormation(OFFENSE_SPECIAL_TEAMS[specialTeamsVariant], prevBallX, prevBallX, forwardSign, kind, `off-${index}`)
-      : [];
+      : isReturnPlay
+        ? buildFormation(OFFENSE_RETURN_BLOCKERS, prevBallX, ballX, forwardSign, kind, `off-${index}`)
+        : [];
   const defenseDots = showFormation
     ? buildFormation(DEFENSE_FORMATIONS[formationVariant], prevBallX, ballX, forwardSign, kind, `def-${index}`)
     : isSpecialTeamsPlay
       ? buildFormation(DEFENSE_SPECIAL_TEAMS[specialTeamsVariant], prevBallX, prevBallX, forwardSign, kind, `def-${index}`)
-      : [];
+      : isReturnPlay
+        ? buildFormation(DEFENSE_RETURN_COVERAGE, prevBallX, ballX, forwardSign, kind, `def-${index}`)
+        : [];
   const ballCarrierRuns = kind === "run" && current.playType !== "sack";
 
   // For a run/sack, whichever defender ends up closest to where the play
