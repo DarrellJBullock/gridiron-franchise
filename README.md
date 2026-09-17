@@ -302,6 +302,11 @@ and branding are invented for demonstration purposes only.
 The 3D live-game viewer's player model is **"CesiumMan"**, a Khronos Group glTF sample asset,
 © 2017 Cesium, licensed under [Creative Commons Attribution 4.0 International (CC-BY-4.0)](https://creativecommons.org/licenses/by/4.0/).
 
+The stadium-sky HDRI (`public/hdri/stadium_sky_1k.hdr`) is **"Kloofendal 48d Partly Cloudy Puresky"**
+and the field's grass texture/normal map (`public/textures/grass/`) is **"Leafy Grass"**, both from
+[Poly Haven](https://polyhaven.com), released under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+(public domain, no attribution required — credited here anyway as a courtesy).
+
 ## Resume Bullet
 
 > Built a football franchise simulation platform using Next.js, React, TypeScript, PostgreSQL, Prisma,

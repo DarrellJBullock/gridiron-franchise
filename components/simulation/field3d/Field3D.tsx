@@ -2,10 +2,30 @@
 
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { Environment, useGLTF, useTexture } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
 import { getContrastColor } from "@/lib/branding";
+
+// Stadium-sky HDRI (CC0, Poly Haven: "Kloofendal 48d Partly Cloudy Puresky",
+// https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) drives PBR
+// ambient lighting via drei's <Environment>, which loads it with three's own
+// RGBELoader and sets scene.environment — no new npm dependency, since
+// @react-three/drei already ships that loader internally. It's lighting
+// only (background=false below), not a visible sky dome.
+const HDRI_URL = "/hdri/stadium_sky_1k.hdr";
+
+// Real turf photo + normal map (CC0, Poly Haven "Leafy Grass":
+// https://polyhaven.com/a/leafy_grass) for the field surface, tiled many
+// times across the field so it reads as individual blades up close instead
+// of one stretched photo. The existing per-game canvas texture (team
+// colors, yard lines, numbers) becomes a transparent decal layered a hair
+// above this turf, the way broadcast field graphics are actually
+// composited over real turf rather than replacing it.
+const GRASS_DIFFUSE_URL = "/textures/grass/grass_diffuse_1k.jpg";
+const GRASS_NORMAL_URL = "/textures/grass/grass_normal_1k.jpg";
+useTexture.preload(GRASS_DIFFUSE_URL);
+useTexture.preload(GRASS_NORMAL_URL);
 
 // A real rigged, skinned, animated humanoid model stands in for the old
 // hand-built capsule rig — "CesiumMan", a Khronos glTF sample asset (CC-BY
@@ -123,16 +143,13 @@ function useFieldTexture(home: TeamVisual, away: TeamVisual) {
     const endZoneW = (END_ZONE_WORLD / WORLD_WIDTH) * w;
     const fieldW = w - endZoneW * 2;
 
-    const turf = ctx.createLinearGradient(0, 0, 0, h);
-    turf.addColorStop(0, "#0f3d21");
-    turf.addColorStop(0.55, "#166534");
-    turf.addColorStop(1, "#1d7a3d");
-    ctx.fillStyle = turf;
-    ctx.fillRect(0, 0, w, h);
-
+    // No turf fill here — the canvas starts transparent and this texture
+    // becomes a markings-only decal over the real grass mesh (see
+    // FieldTurf). Mow stripes are a touch more opaque than before since
+    // they no longer sit on top of a painted color gradient for contrast.
     for (let i = 0; i < 10; i++) {
       if (i % 2 !== 0) continue;
-      ctx.fillStyle = "rgba(255,255,255,0.045)";
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
       ctx.fillRect(endZoneW + (i * fieldW) / 10, 0, fieldW / 10, h);
     }
 
@@ -199,12 +216,34 @@ function useFieldTexture(home: TeamVisual, away: TeamVisual) {
   }, [home.secondaryColor, away.secondaryColor, homeLabel, awayLabel]);
 }
 
-function FieldGround({ home, away }: { home: TeamVisual; away: TeamVisual }) {
-  const texture = useFieldTexture(home, away);
+// The actual turf surface: a real grass photo + normal map, tiled densely
+// so directional/HDRI light picks out individual blades instead of one
+// flat-shaded color.
+function FieldTurf() {
+  const [diffuse, normal] = useTexture([GRASS_DIFFUSE_URL, GRASS_NORMAL_URL]);
+  useMemo(() => {
+    for (const t of [diffuse, normal]) {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(WORLD_WIDTH / 3, WORLD_DEPTH / 3);
+      t.anisotropy = 4;
+    }
+  }, [diffuse, normal]);
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[WORLD_WIDTH, WORLD_DEPTH]} />
-      <meshStandardMaterial map={texture} roughness={0.95} />
+      <meshStandardMaterial map={diffuse} normalMap={normal} normalScale={new THREE.Vector2(0.6, 0.6)} roughness={0.95} />
+    </mesh>
+  );
+}
+
+// Markings only (team colors, yard lines, numbers, mow stripes) as a
+// transparent decal a hair above the turf mesh — see useFieldTexture.
+function FieldGround({ home, away }: { home: TeamVisual; away: TeamVisual }) {
+  const texture = useFieldTexture(home, away);
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]} receiveShadow>
+      <planeGeometry args={[WORLD_WIDTH, WORLD_DEPTH]} />
+      <meshStandardMaterial map={texture} transparent depthWrite={false} roughness={0.95} />
     </mesh>
   );
 }
@@ -287,6 +326,7 @@ function PlayerMesh({
       }
       child.material = tinted;
       child.castShadow = true;
+      child.receiveShadow = true;
     });
   }, [clonedScene, motion.color]);
 
@@ -528,11 +568,30 @@ export function Field3D({
       <Canvas shadows camera={{ position: [0, 12, 14], fov: 42 }} dpr={[1, 1.75]}>
         <color attach="background" args={["#03130a"]} />
           <fog attach="fog" args={["#03130a", 60, 130]} />
-          <ambientLight intensity={0.55} />
-          <directionalLight position={[20, 30, 10]} intensity={1.1} castShadow shadow-mapSize={[1024, 1024]} />
+          <ambientLight intensity={0.35} />
+          <directionalLight
+            position={[20, 30, 10]}
+            intensity={1.4}
+            castShadow
+            shadow-mapSize={[2048, 2048]}
+            shadow-camera-left={-65}
+            shadow-camera-right={65}
+            shadow-camera-top={20}
+            shadow-camera-bottom={-20}
+            shadow-camera-near={1}
+            shadow-camera-far={100}
+          />
           <pointLight position={[-30, 20, 0]} intensity={0.4} color="#bcd7ff" />
           <pointLight position={[30, 20, 0]} intensity={0.4} color="#bcd7ff" />
 
+          {/* Stadium-sky HDRI drives PBR ambient/reflection lighting only
+              (no visible sky dome) — see HDRI_URL above. Grouped with
+              FieldTurf in one Suspense boundary since both load real
+              texture assets, unlike the always-ready canvas decal. */}
+          <Suspense fallback={null}>
+            <Environment files={HDRI_URL} background={false} />
+            <FieldTurf />
+          </Suspense>
           <FieldGround home={home} away={away} />
           <Goalpost x={-2} />
           <Goalpost x={1002} />
