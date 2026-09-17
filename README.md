@@ -297,6 +297,11 @@ Gridiron Franchise is an entirely original, fictional football simulation. It do
 Madden, EA Sports, the NFL, NCAA, or any real team, player, school, or logo. All teams, players, leagues,
 and branding are invented for demonstration purposes only.
 
+### Third-Party Assets
+
+The 3D live-game viewer's player model is **"CesiumMan"**, a Khronos Group glTF sample asset,
+© 2017 Cesium, licensed under [Creative Commons Attribution 4.0 International (CC-BY-4.0)](https://creativecommons.org/licenses/by/4.0/).
+
 ## Resume Bullet
 
 > Built a football franchise simulation platform using Next.js, React, TypeScript, PostgreSQL, Prisma,
