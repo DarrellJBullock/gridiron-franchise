@@ -450,12 +450,23 @@ function Ball({
 }
 
 // Camera pans along the length of the field to track the play, broadcast
-// sideline-cam style, rather than sitting static the whole game.
-function CameraRig({ targetX }: { targetX: number }) {
-  const worldX = toWorldX(targetX);
+// sideline-cam style, and — critically — zooms in tight for a short gain and
+// pulls back for a long pass or kick, instead of sitting at one fixed wide
+// distance the whole game. A static wide shot makes a 5-yard run register as
+// a couple of pixels of movement; a dynamic distance keeps every play legible.
+function CameraRig({ fromX, toX }: { fromX: number; toX: number }) {
+  const worldFrom = toWorldX(fromX);
+  const worldTo = toWorldX(toX);
+  const worldMidX = (worldFrom + worldTo) / 2;
+  const spanWorld = Math.abs(worldTo - worldFrom);
   useFrame((state) => {
-    const desiredX = THREE.MathUtils.clamp(worldX, -WORLD_WIDTH / 2 + 20, WORLD_WIDTH / 2 - 20);
-    state.camera.position.x = THREE.MathUtils.lerp(state.camera.position.x, desiredX * 0.6, 0.04);
+    const desiredX = THREE.MathUtils.clamp(worldMidX, -WORLD_WIDTH / 2 + 20, WORLD_WIDTH / 2 - 20);
+    state.camera.position.x = THREE.MathUtils.lerp(state.camera.position.x, desiredX * 0.6, 0.06);
+
+    const desiredDistance = THREE.MathUtils.clamp(spanWorld * 0.55 + 10, 12, 32);
+    state.camera.position.z = THREE.MathUtils.lerp(state.camera.position.z, desiredDistance, 0.06);
+    state.camera.position.y = THREE.MathUtils.lerp(state.camera.position.y, desiredDistance * 0.85, 0.06);
+
     state.camera.lookAt(desiredX * 0.6, 0, 0);
   });
   return null;
@@ -478,11 +489,9 @@ export function Field3D({
   players,
   ballCarrierRides,
 }: Field3DProps) {
-  const midX = (ballFromX + ballToX) / 2;
-
   return (
     <div className="relative aspect-[10/4] w-full overflow-hidden rounded-lg border border-border-line bg-black shadow-[0_35px_60px_-15px_rgba(0,0,0,0.75)]">
-      <Canvas shadows camera={{ position: [0, 22, 26], fov: 42 }} dpr={[1, 1.75]}>
+      <Canvas shadows camera={{ position: [0, 12, 14], fov: 42 }} dpr={[1, 1.75]}>
         <color attach="background" args={["#03130a"]} />
           <fog attach="fog" args={["#03130a", 60, 130]} />
           <ambientLight intensity={0.55} />
@@ -549,7 +558,7 @@ export function Field3D({
           {scoredThisPlay && <pointLight position={[toWorldX(ballToX), 8, 0]} intensity={2.2} color="#f5a623" distance={30} />}
           {kickMissed && <pointLight position={[toWorldX(ballToX), 4, toWorldZ(ballToY)]} intensity={1.4} color="#f87171" distance={20} />}
 
-        <CameraRig targetX={midX} />
+        <CameraRig fromX={ballFromX} toX={ballToX} />
       </Canvas>
     </div>
   );
