@@ -410,6 +410,7 @@ function Ball({
   playIndex: number;
 }) {
   const ref = useRef<THREE.Group>(null);
+  const shadowRef = useRef<THREE.Mesh>(null);
   const startedAt = useRef(0);
   const start = useMemo(() => new THREE.Vector3(toWorldX(from.x), 1.1, toWorldZ(from.y)), [from.x, from.y]);
   const end = useMemo(() => new THREE.Vector3(toWorldX(to.x), 1.1, toWorldZ(toY)), [to.x, toY]);
@@ -437,6 +438,22 @@ function Ball({
     const arc = Math.sin(progress * Math.PI) * peakHeight;
     g.position.y = start.y + arc;
 
+    // A ball a few inches wide is nearly impossible to read as "in the air"
+    // against a broadcast-distance field, especially in a still frame — real
+    // sports broadcasts solve this with a ground shadow that shrinks and
+    // fades as the object climbs. Keep the shadow tracking the ball's x/z
+    // but pinned to the turf, so the gap between ball and shadow is the
+    // visual cue for height.
+    if (airborne && shadowRef.current) {
+      shadowRef.current.position.x = g.position.x;
+      shadowRef.current.position.z = g.position.z;
+      const heightFrac = THREE.MathUtils.clamp(arc / peakHeight, 0, 1);
+      const shrink = 1 - heightFrac * 0.6;
+      shadowRef.current.scale.setScalar(shrink);
+      const material = shadowRef.current.material as THREE.MeshBasicMaterial;
+      material.opacity = 0.35 * (1 - heightFrac * 0.7);
+    }
+
     if (airborne) {
       const spinSpeed = kind === "pass" ? 16 : 10;
       spinQuat.setFromAxisAngle(spinAxis, state.clock.elapsedTime * spinSpeed);
@@ -449,12 +466,20 @@ function Ball({
   });
 
   return (
-    <group ref={ref} position={start} key={`ball-${playIndex}`}>
-      <mesh castShadow>
-        <capsuleGeometry args={[0.24, 0.34, 4, 8]} />
-        <meshStandardMaterial color="#8B4513" roughness={0.5} />
-      </mesh>
-    </group>
+    <>
+      {airborne && (
+        <mesh ref={shadowRef} position={[start.x, 0.03, start.z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.55, 16]} />
+          <meshBasicMaterial color="#000000" transparent opacity={0.35} depthWrite={false} />
+        </mesh>
+      )}
+      <group ref={ref} position={start} key={`ball-${playIndex}`}>
+        <mesh castShadow>
+          <capsuleGeometry args={[0.28, 0.4, 4, 8]} />
+          <meshStandardMaterial color="#A0522D" roughness={0.4} emissive="#3a1a08" emissiveIntensity={0.3} />
+        </mesh>
+      </group>
+    </>
   );
 }
 
