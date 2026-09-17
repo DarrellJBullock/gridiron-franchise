@@ -6,6 +6,10 @@ import { Environment, useGLTF, useTexture } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
 import { getContrastColor } from "@/lib/branding";
+import { WORLD_WIDTH, WORLD_DEPTH, END_ZONE_WORLD, toWorldX, toWorldZ } from "./coordinates";
+import { CameraRig, type CameraEvent } from "./CameraRig";
+
+export type { CameraEvent };
 
 // Stadium-sky HDRI (CC0, Poly Haven: "Kloofendal 48d Partly Cloudy Puresky",
 // https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) drives PBR
@@ -50,12 +54,6 @@ const PLAYER_TARGET_HEIGHT = 1.8;
 const PLAYER_MODEL_LOCAL_HEIGHT = 1.5065;
 const PLAYER_SCALE = PLAYER_TARGET_HEIGHT / PLAYER_MODEL_LOCAL_HEIGHT;
 const PLAYER_YAW_OFFSET = 0;
-
-// World space mirrors the field's real proportions (100 yards + two 10-yard
-// end zones) at a small, three.js-friendly scale — 1 world unit per yard.
-const WORLD_WIDTH = 120; // 100 playing yards + 2x10 end zones
-const WORLD_DEPTH = 30; // sideline to sideline
-const END_ZONE_WORLD = 10;
 
 interface TeamVisual {
   abbreviation: string;
@@ -117,13 +115,9 @@ export interface Field3DProps {
   firstDownX: number | null;
   players: PlayerMotion[];
   ballCarrierRides: boolean; // true for run/return plays — a runner mesh rides the ball's own path
-}
-
-function toWorldX(x: number) {
-  return (x / 1000) * WORLD_WIDTH - WORLD_WIDTH / 2;
-}
-function toWorldZ(y: number) {
-  return (y / 300) * WORLD_DEPTH - WORLD_DEPTH / 2;
+  // What this play's outcome looks like to a camera — purely descriptive
+  // (see CameraRig), computed by the caller from real play-resolution data.
+  cameraEvent: CameraEvent;
 }
 
 // Builds the static turf — mow stripes, yard lines/numbers, hash marks — as a
@@ -523,29 +517,6 @@ function Ball({
   );
 }
 
-// Camera pans along the length of the field to track the play, broadcast
-// sideline-cam style, and — critically — zooms in tight for a short gain and
-// pulls back for a long pass or kick, instead of sitting at one fixed wide
-// distance the whole game. A static wide shot makes a 5-yard run register as
-// a couple of pixels of movement; a dynamic distance keeps every play legible.
-function CameraRig({ fromX, toX }: { fromX: number; toX: number }) {
-  const worldFrom = toWorldX(fromX);
-  const worldTo = toWorldX(toX);
-  const worldMidX = (worldFrom + worldTo) / 2;
-  const spanWorld = Math.abs(worldTo - worldFrom);
-  useFrame((state) => {
-    const desiredX = THREE.MathUtils.clamp(worldMidX, -WORLD_WIDTH / 2 + 20, WORLD_WIDTH / 2 - 20);
-    state.camera.position.x = THREE.MathUtils.lerp(state.camera.position.x, desiredX * 0.6, 0.06);
-
-    const desiredDistance = THREE.MathUtils.clamp(spanWorld * 0.55 + 10, 12, 32);
-    state.camera.position.z = THREE.MathUtils.lerp(state.camera.position.z, desiredDistance, 0.06);
-    state.camera.position.y = THREE.MathUtils.lerp(state.camera.position.y, desiredDistance * 0.85, 0.06);
-
-    state.camera.lookAt(desiredX * 0.6, 0, 0);
-  });
-  return null;
-}
-
 export function Field3D({
   home,
   away,
@@ -562,6 +533,7 @@ export function Field3D({
   firstDownX,
   players,
   ballCarrierRides,
+  cameraEvent,
 }: Field3DProps) {
   return (
     <div className="relative aspect-[10/4] w-full overflow-hidden rounded-lg border border-border-line bg-black shadow-[0_35px_60px_-15px_rgba(0,0,0,0.75)]">
@@ -657,7 +629,14 @@ export function Field3D({
           {scoredThisPlay && <pointLight position={[toWorldX(ballToX), 8, 0]} intensity={2.2} color="#f5a623" distance={30} />}
           {kickMissed && <pointLight position={[toWorldX(ballToX), 4, toWorldZ(ballToY)]} intensity={1.4} color="#f87171" distance={20} />}
 
-        <CameraRig fromX={ballFromX} toX={ballToX} />
+        <CameraRig
+          fromX={ballFromX}
+          toX={ballToX}
+          toY={ballToY}
+          durationMs={motionDurationMs}
+          playIndex={playIndex}
+          event={cameraEvent}
+        />
       </Canvas>
     </div>
   );
