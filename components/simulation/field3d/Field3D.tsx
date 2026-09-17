@@ -18,11 +18,17 @@ const PLAYER_MODEL_URL = "/models/player.glb";
 useGLTF.preload(PLAYER_MODEL_URL);
 
 // The model's authored scale and default facing direction don't match our
-// world units or forward-facing convention. PLAYER_TARGET_HEIGHT normalizes
-// height automatically (measured from the model's own bounding box);
-// PLAYER_YAW_OFFSET is a manual correction if the model ends up facing the
-// wrong way — nudge it by increments of Math.PI / 2 if so.
+// world units or forward-facing convention. PLAYER_MODEL_LOCAL_HEIGHT is
+// measured directly from the model's glTF position accessor (its own local
+// bind-pose bounding box, read straight from the file) rather than computed
+// at runtime via THREE.Box3 — Box3.setFromObject doesn't reliably measure a
+// SkinnedMesh's true extent (it ignores skin/bone deformation), which
+// previously made every player render several times too large. PLAYER_YAW_OFFSET
+// is a manual correction if the model ends up facing the wrong way — nudge
+// it by increments of Math.PI / 2 if so.
 const PLAYER_TARGET_HEIGHT = 1.8;
+const PLAYER_MODEL_LOCAL_HEIGHT = 1.5065;
+const PLAYER_SCALE = PLAYER_TARGET_HEIGHT / PLAYER_MODEL_LOCAL_HEIGHT;
 const PLAYER_YAW_OFFSET = 0;
 
 // World space mirrors the field's real proportions (100 yards + two 10-yard
@@ -266,13 +272,6 @@ function PlayerMesh({
   // applies the same way to hook-returned animation objects.
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
 
-  const [modelScale, modelYOffset] = useMemo(() => {
-    const box = new THREE.Box3().setFromObject(clonedScene);
-    const height = box.max.y - box.min.y || 1;
-    const scale = PLAYER_TARGET_HEIGHT / height;
-    return [scale, -box.min.y * scale];
-  }, [clonedScene]);
-
   useEffect(() => {
     clonedScene.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
@@ -372,7 +371,7 @@ function PlayerMesh({
 
   return (
     <group ref={groupRef} position={start} key={`${motion.key}-${playIndex}`}>
-      <group ref={bodyRef} scale={modelScale} position={[0, modelYOffset, 0]}>
+      <group ref={bodyRef} scale={PLAYER_SCALE}>
         <primitive object={clonedScene} />
       </group>
     </group>
