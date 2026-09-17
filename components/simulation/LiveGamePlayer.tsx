@@ -954,6 +954,8 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
             ballFromX={prevBallX}
             ballToX={isKickAttempt ? kickTargetX : kind === "pass" ? passTargetX : ballX}
             ballToY={isKickAttempt ? kickTargetY : kind === "pass" ? passTargetY : 150}
+            ballViaX={isRbRunPlay ? handoffQb?.endX : undefined}
+            ballViaY={isRbRunPlay ? handoffQb?.endY : undefined}
             lineOfScrimmageX={index >= 0 ? ballX : null}
             firstDownX={firstDownX}
             cameraEvent={cameraEvent}

@@ -135,6 +135,10 @@ export interface Field3DProps {
   ballFromX: number; // 0-1000
   ballToX: number;
   ballToY: number; // 0-300, usually 150 except a missed kick's lateral miss
+  // A handoff's ball bends through the QB exchange point, same as the
+  // ball-carrying player's own via bend — undefined for a straight path.
+  ballViaX?: number;
+  ballViaY?: number;
   lineOfScrimmageX: number | null;
   firstDownX: number | null;
   players: PlayerMotion[];
@@ -502,6 +506,7 @@ function Ball({
   from,
   to,
   toY,
+  via,
   durationMs,
   kind,
   playIndex,
@@ -509,6 +514,11 @@ function Ball({
   from: { x: number; y: number };
   to: { x: number; y: number };
   toY: number;
+  // A handoff's ball carrier bends through the QB exchange point rather
+  // than running straight from snap to result (see PlayerMesh's own via
+  // bend) — the ball needs the same bend, or it visibly drifts away from
+  // the runner actually carrying it.
+  via?: { x: number; y: number } | null;
   durationMs: number;
   kind: MotionKind;
   playIndex: number;
@@ -518,6 +528,16 @@ function Ball({
   const startedAt = useRef(0);
   const start = useMemo(() => new THREE.Vector3(toWorldX(from.x), 1.1, toWorldZ(from.y)), [from.x, from.y]);
   const end = useMemo(() => new THREE.Vector3(toWorldX(to.x), 1.1, toWorldZ(toY)), [to.x, toY]);
+  const viaPoint = useMemo(
+    () => (via ? new THREE.Vector3(toWorldX(via.x), 1.1, toWorldZ(via.y)) : null),
+    [via]
+  );
+  const posAt = (t: number) => {
+    if (!viaPoint) return new THREE.Vector3().lerpVectors(start, end, t);
+    const a = new THREE.Vector3().lerpVectors(start, viaPoint, t);
+    const b = new THREE.Vector3().lerpVectors(viaPoint, end, t);
+    return a.lerp(b, t);
+  };
   const airborne = kind === "pass" || kind === "kick";
   const peakHeight = airborne ? Math.min(14, 3 + start.distanceTo(end) * 0.35) : 1.4;
   // A real spiral: the ball's long axis points along its actual direction of
@@ -531,6 +551,10 @@ function Ball({
   const spinAxis = useMemo(() => new THREE.Vector3(1, 0, 0), []);
   const spinQuat = useMemo(() => new THREE.Quaternion(), []);
   const orientation = useMemo(() => new THREE.Quaternion(), []);
+  const yAxis = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+  const xAxis = useMemo(() => new THREE.Vector3(1, 0, 0), []);
+  const carryQuat = useMemo(() => new THREE.Quaternion(), []);
+  const tuckQuat = useMemo(() => new THREE.Quaternion(), []);
 
   useFrame((state) => {
     if (startedAt.current === 0) startedAt.current = state.clock.elapsedTime;
@@ -538,7 +562,9 @@ function Ball({
     const progress = Math.max(0, Math.min(1, elapsedMs / durationMs));
     const g = ref.current;
     if (!g) return;
-    g.position.lerpVectors(start, end, progress);
+    const pos = posAt(progress);
+    g.position.x = pos.x;
+    g.position.z = pos.z;
     const arc = Math.sin(progress * Math.PI) * peakHeight;
     g.position.y = start.y + arc;
 
@@ -564,8 +590,17 @@ function Ball({
       orientation.copy(yawQuat).multiply(tiltQuat).multiply(spinQuat);
       g.quaternion.copy(orientation);
     } else {
-      g.rotation.x += kind === "sack" ? 0 : 0.25;
-      g.rotation.z = progress * 3;
+      // A carried ball is gripped, not tumbling — it stays roughly fixed
+      // under the arm (a small forward/downward tuck) and just turns to
+      // face wherever the carrier is actually heading at this instant
+      // (accounting for the handoff's via bend), instead of spinning in
+      // place every frame regardless of how much time has passed.
+      const next = posAt(Math.min(1, progress + 0.05));
+      const travelYaw = Math.atan2(next.x - pos.x, next.z - pos.z);
+      carryQuat.setFromAxisAngle(yAxis, travelYaw);
+      tuckQuat.setFromAxisAngle(xAxis, 0.4);
+      orientation.copy(carryQuat).multiply(tuckQuat);
+      g.quaternion.copy(orientation);
     }
   });
 
@@ -573,13 +608,18 @@ function Ball({
     <>
       {airborne && (
         <mesh ref={shadowRef} position={[start.x, 0.03, start.z]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[0.55, 16]} />
+          <circleGeometry args={[0.35, 16]} />
           <meshBasicMaterial color="#000000" transparent opacity={0.35} depthWrite={false} />
         </mesh>
       )}
       <group ref={ref} position={start} key={`ball-${playIndex}`}>
         <mesh castShadow>
-          <capsuleGeometry args={[0.28, 0.4, 4, 8]} />
+          {/* A real football is ~28cm tip-to-tip, ~0.3 world units at this
+              scale (1 unit = 1 yard) — the previous 0.28/0.4 capsule was
+              nearly a full unit tall, close to a third of a player's own
+              height, and read as comically oversized next to a
+              realistically-scaled human model. */}
+          <capsuleGeometry args={[0.09, 0.16, 4, 8]} />
           <meshStandardMaterial color="#A0522D" roughness={0.4} emissive="#3a1a08" emissiveIntensity={0.3} />
         </mesh>
       </group>
@@ -599,6 +639,8 @@ export function Field3D({
   ballFromX,
   ballToX,
   ballToY,
+  ballViaX,
+  ballViaY,
   lineOfScrimmageX,
   firstDownX,
   players,
@@ -691,6 +733,7 @@ export function Field3D({
             from={{ x: ballFromX, y: 150 }}
             to={{ x: isKickAttempt ? ballToX : ballToX, y: ballToY }}
             toY={ballToY}
+            via={ballViaX !== undefined && ballViaY !== undefined ? { x: ballViaX, y: ballViaY } : null}
             durationMs={motionDurationMs}
             kind={kind}
             playIndex={playIndex}
