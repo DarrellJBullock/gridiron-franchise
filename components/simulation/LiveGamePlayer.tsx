@@ -162,16 +162,21 @@ function goalpostX(offenseAbbr: string, homeAbbr: string): number {
   return offenseAbbr === homeAbbr ? 1000 - insetX : insetX;
 }
 
-// Rough pre-snap alignment, expressed as offsets from the ball along the
-// direction of attack (local +x = downfield for the offense) and across the
-// hash (local y, field center = 0). Not a real playbook — just enough shape
-// to read as "11 players set at the line" the way a broadcast wide shot does.
+// Pre-snap alignment, expressed as offsets from the ball along the direction
+// of attack (local +x = downfield for the offense) and across the hash
+// (local y, field center = 0). Depths are real: 1 world-x unit ≈ 1/8.4 yard
+// (FIELD_WIDTH=840 units for 100 yards), so a QB "under center" sits ~1 yard
+// back (x≈-8) and a true shotgun QB sits ~5.5 yards back (x≈-46) — these
+// aren't the same vague middle depth, they're the two actual alignments.
 //
 // Real teams change personnel and spacing by situation — short yardage packs
-// extra blockers into the box, obvious passing downs spread receivers wide —
-// and the defense counters each look. These are three representative shapes,
-// picked by down/distance/field position in selectFormationVariant below.
-type FormationVariant = "base" | "spread" | "goalLine";
+// extra blockers into the box in a real stacked I-formation, obvious passing
+// downs go to a genuine shotgun with receivers spread (a trips look on one
+// side, one isolated on the other) — and the defense counters each look with
+// its own real package (base 4-3, nickel, dime, or a loaded goal-line box).
+// These four shapes are picked by down/distance/field position in
+// selectFormationVariant below.
+type FormationVariant = "base" | "spread" | "obviousPass" | "goalLine";
 
 interface FormationSlot {
   x: number;
@@ -179,52 +184,57 @@ interface FormationSlot {
   role: string;
 }
 
-const OFFENSE_BASE: readonly FormationSlot[] = [
+// Singleback, 11 personnel (1 RB, 1 TE, 3 WR): QB under center, single back
+// deep enough to actually be a tailback rather than crowding the QB's heels.
+const OFFENSE_SINGLEBACK: readonly FormationSlot[] = [
   { x: 3, y: -42, role: "OL" },
   { x: 3, y: -21, role: "OL" },
   { x: 3, y: 0, role: "OL" },
   { x: 3, y: 21, role: "OL" },
   { x: 3, y: 42, role: "OL" },
-  { x: -16, y: 0, role: "QB" },
-  { x: -30, y: 10, role: "RB" },
+  { x: -8, y: 0, role: "QB" },
+  { x: -58, y: 10, role: "RB" },
   { x: 3, y: 62, role: "TE" },
   { x: -2, y: -128, role: "WR" },
   { x: -2, y: 128, role: "WR" },
   { x: 4, y: -96, role: "WR" },
 ];
 
-// Obvious passing downs: 4 wide, QB in shotgun, no in-line TE.
-const OFFENSE_SPREAD: readonly FormationSlot[] = [
+// True shotgun, 10 personnel (1 RB, 4 WR), trips right: three receivers
+// bunched to one side, one isolated on the backside — a real modern
+// obvious-passing-down shape, not a symmetric 2-and-2 split.
+const OFFENSE_SHOTGUN_TRIPS: readonly FormationSlot[] = [
   { x: 3, y: -42, role: "OL" },
   { x: 3, y: -21, role: "OL" },
   { x: 3, y: 0, role: "OL" },
   { x: 3, y: 21, role: "OL" },
   { x: 3, y: 42, role: "OL" },
-  { x: -20, y: 0, role: "QB" },
-  { x: -28, y: 14, role: "RB" },
-  { x: -2, y: -150, role: "WR" },
-  { x: -2, y: 150, role: "WR" },
-  { x: 4, y: -104, role: "WR" },
-  { x: 4, y: 104, role: "WR" },
+  { x: -46, y: 0, role: "QB" },
+  { x: -42, y: -16, role: "RB" },
+  { x: -2, y: -148, role: "WR" }, // isolated backside X
+  { x: 6, y: 90, role: "WR" }, // trips: innermost slot
+  { x: 2, y: 118, role: "WR" }, // trips: middle
+  { x: -2, y: 144, role: "WR" }, // trips: outside
 ];
 
-// Short yardage / goal-to-go: extra blocking with an FB and two in-line TEs,
-// QB under center, one receiver split out.
-const OFFENSE_GOAL_LINE: readonly FormationSlot[] = [
+// Real goal-line/short-yardage I-formation, 22 personnel (2 backs incl. FB,
+// 2 TE, 1 WR): FB and tailback stacked directly behind the QB — the actual
+// "I" shape — instead of the two backs sitting side by side.
+const OFFENSE_I_FORM: readonly FormationSlot[] = [
   { x: 3, y: -42, role: "OL" },
   { x: 3, y: -21, role: "OL" },
   { x: 3, y: 0, role: "OL" },
   { x: 3, y: 21, role: "OL" },
   { x: 3, y: 42, role: "OL" },
-  { x: -12, y: 0, role: "QB" },
-  { x: -22, y: -8, role: "FB" },
-  { x: -26, y: 10, role: "RB" },
+  { x: -8, y: 0, role: "QB" },
+  { x: -38, y: 0, role: "FB" }, // lead blocker, stacked behind the QB
+  { x: -58, y: 0, role: "RB" }, // tailback, stacked behind the FB
   { x: 3, y: 58, role: "TE" },
   { x: 3, y: -58, role: "TE" },
-  { x: -2, y: 100, role: "WR" },
+  { x: -2, y: 110, role: "WR" },
 ];
 
-const DEFENSE_BASE: readonly FormationSlot[] = [
+const DEFENSE_BASE_43: readonly FormationSlot[] = [
   { x: 9, y: -30, role: "DL" },
   { x: 9, y: -10, role: "DL" },
   { x: 9, y: 10, role: "DL" },
@@ -238,7 +248,8 @@ const DEFENSE_BASE: readonly FormationSlot[] = [
   { x: 52, y: 38, role: "S" },
 ];
 
-// Nickel: a 3rd CB replaces a LB to match the offense's extra receiver.
+// Nickel: a 3rd CB (over the slot) replaces a LB to match the offense's
+// extra receiver.
 const DEFENSE_NICKEL: readonly FormationSlot[] = [
   { x: 9, y: -30, role: "DL" },
   { x: 9, y: -10, role: "DL" },
@@ -253,8 +264,24 @@ const DEFENSE_NICKEL: readonly FormationSlot[] = [
   { x: 52, y: 38, role: "S" },
 ];
 
+// Dime: a 4th and 5th CB for obvious-passing/very-long-yardage situations,
+// down to a single "money" linebacker — six defensive backs on the field.
+const DEFENSE_DIME: readonly FormationSlot[] = [
+  { x: 9, y: -24, role: "DL" },
+  { x: 9, y: -8, role: "DL" },
+  { x: 9, y: 8, role: "DL" },
+  { x: 9, y: 24, role: "DL" },
+  { x: 26, y: 0, role: "LB" },
+  { x: 17, y: -140, role: "CB" },
+  { x: 17, y: 140, role: "CB" },
+  { x: 20, y: -90, role: "CB" },
+  { x: 20, y: 90, role: "CB" },
+  { x: 52, y: -38, role: "S" },
+  { x: 52, y: 38, role: "S" },
+];
+
 // Goal-line stack: an extra DL and LB crowd the box, only one deep safety.
-const DEFENSE_GOAL_LINE: readonly FormationSlot[] = [
+const DEFENSE_GOAL_LINE_STACK: readonly FormationSlot[] = [
   { x: 7, y: -36, role: "DL" },
   { x: 7, y: -18, role: "DL" },
   { x: 7, y: 0, role: "DL" },
@@ -269,23 +296,27 @@ const DEFENSE_GOAL_LINE: readonly FormationSlot[] = [
 ];
 
 const OFFENSE_FORMATIONS: Record<FormationVariant, readonly FormationSlot[]> = {
-  base: OFFENSE_BASE,
-  spread: OFFENSE_SPREAD,
-  goalLine: OFFENSE_GOAL_LINE,
+  base: OFFENSE_SINGLEBACK,
+  spread: OFFENSE_SHOTGUN_TRIPS,
+  obviousPass: OFFENSE_SHOTGUN_TRIPS,
+  goalLine: OFFENSE_I_FORM,
 };
 const DEFENSE_FORMATIONS: Record<FormationVariant, readonly FormationSlot[]> = {
-  base: DEFENSE_BASE,
+  base: DEFENSE_BASE_43,
   spread: DEFENSE_NICKEL,
-  goalLine: DEFENSE_GOAL_LINE,
+  obviousPass: DEFENSE_DIME,
+  goalLine: DEFENSE_GOAL_LINE_STACK,
 };
 
-// Short yardage/goal-to-go situations pack extra blockers into the box;
-// long-yardage/passing downs spread receivers out. Anything else runs the
-// base personnel grouping.
+// Short yardage/goal-to-go situations pack extra blockers into a real
+// I-formation; long-yardage downs go to a real shotgun trips look, with the
+// defense answering with nickel (moderately long) or dime (very long, an
+// obvious passing situation). Anything else runs the base singleback set.
 function selectFormationVariant(down: number, distance: number, yardLine: number): FormationVariant {
   const goalToGo = yardLine >= 90;
   const shortYardage = distance <= 2 && down >= 2;
   if (goalToGo || shortYardage) return "goalLine";
+  if (distance >= 12 && down >= 2) return "obviousPass";
   if (distance >= 7 && down >= 2) return "spread";
   return "base";
 }
