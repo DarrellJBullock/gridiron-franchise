@@ -37,6 +37,9 @@ export interface PlayerMotion {
   isKicker?: boolean;
   // Plays a throwing motion instead of a running stride (the QB on a pass).
   isPasser?: boolean;
+  // Extends the ball forward for the exchange instead of a running stride
+  // (the QB on a run/touchdown, handing off to the RB).
+  isHandingOff?: boolean;
   // Reaches up to make the catch late in the play (the pass's actual target).
   isReceiver?: boolean;
   // A route break: the player runs straight toward (viaX, viaY) first, then
@@ -312,6 +315,16 @@ function PlayerMesh({
           if (rightArmRef.current) rightArmRef.current.rotation.x = reach;
           if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.6;
           if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.6;
+        } else if (motion.isHandingOff) {
+          // Turn and extend the ball forward for the exchange early in the
+          // snap, then stay put watching the play develop — a real handoff
+          // stands still afterward rather than continuing to run downfield.
+          const handoffT = Math.min(1, eased / 0.3);
+          const extend = THREE.MathUtils.lerp(0, -0.7, 1 - Math.pow(1 - handoffT, 3));
+          if (leftArmRef.current) leftArmRef.current.rotation.x = extend;
+          if (rightArmRef.current) rightArmRef.current.rotation.x = extend;
+          if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.15;
+          if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.15;
         } else {
           if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.6;
           if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.6;
