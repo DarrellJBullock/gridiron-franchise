@@ -28,6 +28,17 @@ export interface PlayerMotion {
   ring: string;
   isTackler?: boolean;
   isCarrier?: boolean;
+  // True for whichever player is actually holding the ball when the play
+  // dies — the ball carrier on a run/return, or the QB on a sack — so they
+  // (not just the tackler) go down when the play ends in a tackle.
+  isBallHandler?: boolean;
+  // Plays a kicking-leg swing instead of a running stride (field goal/XP
+  // kicker, punter).
+  isKicker?: boolean;
+  // Plays a throwing motion instead of a running stride (the QB on a pass).
+  isPasser?: boolean;
+  // Reaches up to make the catch late in the play (the pass's actual target).
+  isReceiver?: boolean;
   // A route break: the player runs straight toward (viaX, viaY) first, then
   // cuts to (endX, endY) — an L-shaped route instead of a straight lerp.
   viaX?: number;
@@ -276,10 +287,37 @@ function PlayerMesh({
     const body = bodyRef.current;
     if (body) {
       if (moving) {
-        if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.6;
-        if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.6;
-        if (leftArmRef.current) leftArmRef.current.rotation.x = -stride * 0.5;
-        if (rightArmRef.current) rightArmRef.current.rotation.x = stride * 0.5;
+        if (motion.isKicker) {
+          // Plant leg holds steady; the kicking leg swings back-to-front as
+          // the ball leaves, with the arms countering for balance.
+          const kickT = Math.min(1, eased / 0.35);
+          const swing = THREE.MathUtils.lerp(-0.5, 1.3, 1 - Math.pow(1 - kickT, 3));
+          if (rightLegRef.current) rightLegRef.current.rotation.x = swing;
+          if (leftLegRef.current) leftLegRef.current.rotation.x = -0.15;
+          if (leftArmRef.current) leftArmRef.current.rotation.x = THREE.MathUtils.lerp(0, -0.4, kickT);
+          if (rightArmRef.current) rightArmRef.current.rotation.x = THREE.MathUtils.lerp(0, 0.3, kickT);
+        } else if (motion.isPasser) {
+          // Cock the arm back, then release forward early in the snap.
+          const throwT = Math.min(1, eased / 0.4);
+          const arm = THREE.MathUtils.lerp(-1.1, 0.9, 1 - Math.pow(1 - throwT, 3));
+          if (rightArmRef.current) rightArmRef.current.rotation.x = arm;
+          if (leftArmRef.current) leftArmRef.current.rotation.x = -0.2;
+          if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.25;
+          if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.25;
+        } else if (motion.isReceiver) {
+          // Reach both arms up to make the catch as the ball arrives late.
+          const catchT = Math.max(0, Math.min(1, (eased - 0.6) / 0.4));
+          const reach = THREE.MathUtils.lerp(0, -1.3, catchT);
+          if (leftArmRef.current) leftArmRef.current.rotation.x = reach;
+          if (rightArmRef.current) rightArmRef.current.rotation.x = reach;
+          if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.6;
+          if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.6;
+        } else {
+          if (leftLegRef.current) leftLegRef.current.rotation.x = stride * 0.6;
+          if (rightLegRef.current) rightLegRef.current.rotation.x = -stride * 0.6;
+          if (leftArmRef.current) leftArmRef.current.rotation.x = -stride * 0.5;
+          if (rightArmRef.current) rightArmRef.current.rotation.x = stride * 0.5;
+        }
         body.rotation.z = stride * 0.05;
         const nextPos = posAt(Math.min(1, eased + 0.05));
         body.rotation.y = Math.atan2(nextPos.x - pos.x, nextPos.z - pos.z);
@@ -459,15 +497,26 @@ export function Field3D({
           {lineOfScrimmageX !== null && <FieldLine x={lineOfScrimmageX} color="#60a5fa" />}
           {firstDownX !== null && <FieldLine x={firstDownX} color="#facc15" />}
 
-          {players.map((p) => (
-            <PlayerMesh
-              key={`${p.key}-${playIndex}`}
-              motion={p}
-              durationMs={motionDurationMs}
-              playIndex={playIndex}
-              fallOnImpact={Boolean(p.isTackler) && (kind === "run" || kind === "sack")}
-            />
-          ))}
+          {players.map((p) => {
+            // Tacklers go down on any run/sack; the man who actually had the
+            // ball (runner or sacked QB) goes down too — unless he just
+            // scored, in which case he stays on his feet in the end zone.
+            const fallOnImpact =
+              kind === "sack"
+                ? Boolean(p.isTackler) || Boolean(p.isBallHandler)
+                : kind === "run"
+                  ? Boolean(p.isTackler) || (Boolean(p.isBallHandler) && !scoredThisPlay)
+                  : false;
+            return (
+              <PlayerMesh
+                key={`${p.key}-${playIndex}`}
+                motion={p}
+                durationMs={motionDurationMs}
+                playIndex={playIndex}
+                fallOnImpact={fallOnImpact}
+              />
+            );
+          })}
 
           <Ball
             from={{ x: ballFromX, y: 150 }}
@@ -489,10 +538,11 @@ export function Field3D({
                 color: "#eab308",
                 ring: "#1f2937",
                 isCarrier: true,
+                isBallHandler: true,
               }}
               durationMs={motionDurationMs}
               playIndex={playIndex}
-              fallOnImpact={false}
+              fallOnImpact={!scoredThisPlay}
             />
           )}
 

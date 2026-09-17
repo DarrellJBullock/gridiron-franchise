@@ -290,6 +290,67 @@ function selectFormationVariant(down: number, distance: number, yardLine: number
   return "base";
 }
 
+// Special-teams personnel: a protection line holds its blocks (no route/
+// pursuit motion — extraMotion's default "kick" case is a no-op) while the
+// kicker/punter/holder just stand in their spot and the kicking leg swings
+// in place via PlayerMesh's isKicker animation.
+type SpecialTeamsVariant = "fieldGoal" | "punt";
+
+const OFFENSE_FIELD_GOAL: readonly FormationSlot[] = [
+  { x: 3, y: -42, role: "OL" },
+  { x: 3, y: -21, role: "OL" },
+  { x: 3, y: 0, role: "OL" },
+  { x: 3, y: 21, role: "OL" },
+  { x: 3, y: 42, role: "OL" },
+  { x: 3, y: -62, role: "OL" },
+  { x: 3, y: 62, role: "OL" },
+  { x: -24, y: 0, role: "H" },
+  { x: -40, y: 0, role: "K" },
+];
+
+const OFFENSE_PUNT: readonly FormationSlot[] = [
+  { x: 3, y: -42, role: "OL" },
+  { x: 3, y: -21, role: "OL" },
+  { x: 3, y: 0, role: "OL" },
+  { x: 3, y: 21, role: "OL" },
+  { x: 3, y: 42, role: "OL" },
+  { x: 3, y: -62, role: "OL" },
+  { x: 3, y: 62, role: "OL" },
+  { x: -55, y: 0, role: "P" },
+];
+
+const DEFENSE_FIELD_GOAL_BLOCK: readonly FormationSlot[] = [
+  { x: 9, y: -36, role: "DL" },
+  { x: 9, y: -18, role: "DL" },
+  { x: 9, y: 0, role: "DL" },
+  { x: 9, y: 18, role: "DL" },
+  { x: 9, y: 36, role: "DL" },
+  { x: 9, y: -54, role: "DL" },
+  { x: 9, y: 54, role: "DL" },
+  { x: 30, y: -20, role: "LB" },
+  { x: 30, y: 20, role: "LB" },
+];
+
+const DEFENSE_PUNT_RETURN: readonly FormationSlot[] = [
+  { x: 9, y: -36, role: "DL" },
+  { x: 9, y: -18, role: "DL" },
+  { x: 9, y: 0, role: "DL" },
+  { x: 9, y: 18, role: "DL" },
+  { x: 9, y: 36, role: "DL" },
+  { x: 26, y: -20, role: "LB" },
+  { x: 26, y: 20, role: "LB" },
+  { x: 68, y: 0, role: "S" }, // deep returner
+];
+
+const OFFENSE_SPECIAL_TEAMS: Record<SpecialTeamsVariant, readonly FormationSlot[]> = {
+  fieldGoal: OFFENSE_FIELD_GOAL,
+  punt: OFFENSE_PUNT,
+};
+const DEFENSE_SPECIAL_TEAMS: Record<SpecialTeamsVariant, readonly FormationSlot[]> = {
+  fieldGoal: DEFENSE_FIELD_GOAL_BLOCK,
+  punt: DEFENSE_PUNT_RETURN,
+};
+
 interface FormationDot {
   key: string;
   role: string;
@@ -525,13 +586,21 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
   // Snap formation: offense always attacks toward +x when home, -x when away.
   const forwardSign: 1 | -1 = offenseIsHome ? 1 : -1;
   const showFormation = index >= 0 && FORMATION_PLAY_TYPES.has(current.playType);
+  const isSpecialTeamsPlay = index >= 0 && (KICK_ATTEMPT_TYPES.has(current.playType) || current.playType === "punt");
   const formationVariant = selectFormationVariant(current.down, current.distance, current.yardLine);
+  const specialTeamsVariant: SpecialTeamsVariant = current.playType === "punt" ? "punt" : "fieldGoal";
   const offenseDots = showFormation
     ? buildFormation(OFFENSE_FORMATIONS[formationVariant], prevBallX, ballX, forwardSign, kind, `off-${index}`)
-    : [];
+    : isSpecialTeamsPlay
+      ? // Protection holds its blocks at the line — anchor start/end to the
+        // same spot so linemen don't slide toward wherever the kick lands.
+        buildFormation(OFFENSE_SPECIAL_TEAMS[specialTeamsVariant], prevBallX, prevBallX, forwardSign, kind, `off-${index}`)
+      : [];
   const defenseDots = showFormation
     ? buildFormation(DEFENSE_FORMATIONS[formationVariant], prevBallX, ballX, forwardSign, kind, `def-${index}`)
-    : [];
+    : isSpecialTeamsPlay
+      ? buildFormation(DEFENSE_SPECIAL_TEAMS[specialTeamsVariant], prevBallX, prevBallX, forwardSign, kind, `def-${index}`)
+      : [];
   const ballCarrierRuns = kind === "run" && current.playType !== "sack";
 
   // For a run/sack, whichever defender ends up closest to where the play
@@ -578,6 +647,10 @@ export function LiveGamePlayer({ gameId, plays, home, away, autoPlay = true }: L
       ring: offenseTeam.secondaryColor,
       viaX: d.viaX,
       viaY: d.viaY,
+      isKicker: d.role === "K" || d.role === "P",
+      isPasser: kind === "pass" && d.role === "QB",
+      isReceiver: kind === "pass" && targetReceiver !== null && d.key === targetReceiver.key,
+      isBallHandler: kind === "sack" && d.role === "QB",
     })),
     ...defenseDots.map((d) => ({
       key: d.key,
