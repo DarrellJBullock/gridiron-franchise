@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Environment, useGLTF, useTexture } from "@react-three/drei";
+import { EffectComposer, Vignette, Bloom } from "@react-three/postprocessing";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
 import { getContrastColor } from "@/lib/branding";
@@ -175,6 +176,37 @@ function useFieldTexture(home: TeamVisual, away: TeamVisual) {
       ctx.fillRect(endZoneW + (i * fieldW) / 10, 0, fieldW / 10, h);
     }
 
+    // Field wear: real turf shows worn, dirt-brown patches where traffic
+    // is heaviest — between the hashes down the whole length of the
+    // field, and worst right at the goal lines. Drawn as soft radial
+    // gradients into this same decal (texture only, no extra geometry). A
+    // sine-based hash stands in for Math.random() so the pattern is fixed
+    // instead of reshuffling on every re-render.
+    const hashTop = h * 0.34;
+    const hashBottom = h * 0.66;
+    for (let i = 0; i < 26; i++) {
+      const seed = i * 37.219;
+      const rx = endZoneW + (Math.sin(seed) * 0.5 + 0.5) * fieldW;
+      const ry = hashTop + (Math.sin(seed * 1.7) * 0.5 + 0.5) * (hashBottom - hashTop);
+      const radius = 18 + (Math.sin(seed * 2.3) * 0.5 + 0.5) * 34;
+      const wear = ctx.createRadialGradient(rx, ry, 0, rx, ry, radius);
+      wear.addColorStop(0, "rgba(92,62,38,0.16)");
+      wear.addColorStop(1, "rgba(92,62,38,0)");
+      ctx.fillStyle = wear;
+      ctx.beginPath();
+      ctx.arc(rx, ry, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const goalLineX of [endZoneW, w - endZoneW]) {
+      const wear = ctx.createRadialGradient(goalLineX, h / 2, 0, goalLineX, h / 2, 70);
+      wear.addColorStop(0, "rgba(92,62,38,0.22)");
+      wear.addColorStop(1, "rgba(92,62,38,0)");
+      ctx.fillStyle = wear;
+      ctx.beginPath();
+      ctx.arc(goalLineX, h / 2, 70, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     ctx.fillStyle = home.secondaryColor;
     ctx.globalAlpha = 0.9;
     ctx.fillRect(0, 0, endZoneW, h);
@@ -301,6 +333,58 @@ function Goalpost({ x }: { x: number }) {
         <meshStandardMaterial color={poleColor} metalness={0.4} roughness={0.4} />
       </mesh>
     </group>
+  );
+}
+
+const CROWD_COLORS = ["#c2410c", "#1d4ed8", "#15803d", "#a16207", "#7c3aed", "#be123c", "#0e7490", "#4b5563", "#f8fafc"];
+const CROWD_COLUMNS = 44;
+const CROWD_ROWS = 5;
+const CROWD_COUNT = CROWD_COLUMNS * CROWD_ROWS * 2;
+
+// A simple instanced crowd filling raised tiers along both sidelines —
+// deliberately low-poly and static (a fixed-pose "blob" per spectator, no
+// per-instance animation) since this is background atmosphere, not a
+// focal point. THREE.InstancedMesh renders all ~440 spectators in a single
+// draw call instead of hundreds of individual meshes.
+function Crowd() {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const matrix = new THREE.Matrix4();
+    const color = new THREE.Color();
+    let i = 0;
+    for (const side of [-1, 1]) {
+      for (let row = 0; row < CROWD_ROWS; row++) {
+        // Each row sits further back and higher up — raised bleacher
+        // tiers rather than a single flat wall of spectators.
+        const rowZ = side * (WORLD_DEPTH / 2 + 4 + row * 1.3);
+        const rowY = 1.2 + row * 0.85;
+        for (let col = 0; col < CROWD_COLUMNS; col++) {
+          const x = -WORLD_WIDTH / 2 + ((col + 0.5) / CROWD_COLUMNS) * WORLD_WIDTH;
+          // A fixed sine-based hash instead of Math.random() jitters each
+          // spectator's position slightly so the crowd doesn't read as a
+          // perfect, obviously-instanced grid, while staying deterministic.
+          const jitterX = Math.sin(i * 12.9898) * 0.3;
+          const jitterY = Math.sin(i * 78.233) * 0.15;
+          matrix.makeTranslation(x + jitterX, rowY + jitterY, rowZ);
+          mesh.setMatrixAt(i, matrix);
+          color.set(CROWD_COLORS[i % CROWD_COLORS.length]);
+          mesh.setColorAt(i, color);
+          i++;
+        }
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, []);
+
+  return (
+    <instancedMesh ref={meshRef} args={[undefined, undefined, CROWD_COUNT]}>
+      <boxGeometry args={[0.55, 0.9, 0.4]} />
+      <meshStandardMaterial roughness={0.95} />
+    </instancedMesh>
   );
 }
 
@@ -679,6 +763,7 @@ export function Field3D({
           <FieldGround home={home} away={away} />
           <Goalpost x={-2} />
           <Goalpost x={1002} />
+          <Crowd />
 
           {lineOfScrimmageX !== null && <FieldLine x={lineOfScrimmageX} color="#60a5fa" />}
           {firstDownX !== null && <FieldLine x={firstDownX} color="#facc15" />}
@@ -750,6 +835,16 @@ export function Field3D({
           playIndex={playIndex}
           event={cameraEvent}
         />
+
+        {/* Subtle broadcast-style finish: a vignette to draw the eye toward
+            the play instead of the frame edges, and a light bloom so the
+            score/miss point lights and bright turf highlights actually
+            glow instead of just being bright flat pixels. Both kept mild —
+            this is meant to read as "a little polish," not a heavy filter. */}
+        <EffectComposer>
+          <Bloom intensity={0.35} luminanceThreshold={0.85} luminanceSmoothing={0.2} mipmapBlur />
+          <Vignette eskil={false} offset={0.25} darkness={0.6} />
+        </EffectComposer>
       </Canvas>
     </div>
   );
